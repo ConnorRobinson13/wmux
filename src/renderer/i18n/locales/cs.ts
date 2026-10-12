@@ -217,6 +217,8 @@ export const cs: Translation = {
   'workspaceRow.done': 'Hotovo: {text}',
   'workspaceRow.orchestratingOne': 'Orchestrace · {count} agent',
   'workspaceRow.orchestratingMany': 'Orchestrace · {count} agentů',
+  'workspaceRow.backgroundShellsOne': 'Na pozadí · {count} shell',
+  'workspaceRow.backgroundShellsMany': 'Na pozadí · shelly: {count}',
   'workspaceRow.claudeRunning': '{working}/{total} běží',
   'workspaceRow.toolCallsTitle': '{count} volání nástrojů v tomto pracovním prostoru',
   'workspaceRow.closeWorkspace': 'Zavřít pracovní prostor',
@@ -568,6 +570,7 @@ export const cs: Translation = {
   'workspace.defaultTitle': 'Pracovní prostor {n}',
   // Seznam agentů v postranním panelu — souhrnný řádek „+N další“ při přetečení
   'agentView.moreSummary': '+{n} další',
+  'agentView.backgroundShell': 'shell',
   // Nastavení — názvy zvuků oznámení
   'notificationSound.default': 'Výchozí',
   'notificationSound.chime': 'Zvonkohra',

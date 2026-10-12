@@ -33,13 +33,13 @@ describe('agentsForWorkspace', () => {
   it('ignores observer data older than 5 minutes (TTL)', () => {
     const tree = leaf('pane-1', ['surf-a']);
     const out = agentsForWorkspace(tree, { 'surf-a': obs([{ name: 'x', toolUses: 1, tokens: '1k', done: false }], NOW - 301_000) }, new Map(), NOW);
-    expect(out).toEqual({ lines: [], total: 0, running: 0 });
+    expect(out).toEqual({ lines: [], total: 0, running: 0, shells: 0 });
   });
 
   it('ignores surfaces that belong to other workspaces', () => {
     const tree = leaf('pane-1', ['surf-a']);
     const out = agentsForWorkspace(tree, { 'surf-other': obs([{ name: 'x', toolUses: 1, tokens: '1k', done: false }]) }, new Map(), NOW);
-    expect(out).toEqual({ lines: [], total: 0, running: 0 });
+    expect(out).toEqual({ lines: [], total: 0, running: 0, shells: 0 });
   });
 
   it('sorts running agents before done ones', () => {

@@ -251,6 +251,8 @@ export const zhTW: Translation = {
   'workspaceRow.done': '完成：{text}',
   'workspaceRow.orchestratingOne': '編排中 · {count} 個 agent',
   'workspaceRow.orchestratingMany': '編排中 · {count} 個 agent',
+  'workspaceRow.backgroundShellsOne': '背景 · {count} 個 shell',
+  'workspaceRow.backgroundShellsMany': '背景 · {count} 個 shell',
   'workspaceRow.claudeRunning': '{working}/{total} 執行中',
   'workspaceRow.toolCallsTitle': '這個工作區有 {count} 次工具呼叫',
   'workspaceRow.closeWorkspace': '關閉工作區',
@@ -704,6 +706,7 @@ export const zhTW: Translation = {
   'workspace.defaultTitle': '工作區 {n}',
   // 側邊欄 agent 清單 — 清單溢位時的「＋N 項」摘要列
   'agentView.moreSummary': '＋{n} 項',
+  'agentView.backgroundShell': 'shell',
   // 設定 — 通知音效名稱
   'notificationSound.default': '預設',
   'notificationSound.chime': '鐘聲',

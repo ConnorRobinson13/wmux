@@ -217,6 +217,8 @@ export const ja: Translation = {
   'workspaceRow.done': '完了: {text}',
   'workspaceRow.orchestratingOne': 'オーケストレーション中 · {count} エージェント',
   'workspaceRow.orchestratingMany': 'オーケストレーション中 · {count} エージェント',
+  'workspaceRow.backgroundShellsOne': 'バックグラウンド · シェル {count}',
+  'workspaceRow.backgroundShellsMany': 'バックグラウンド · シェル {count}',
   'workspaceRow.claudeRunning': '{working}/{total} 実行中',
   'workspaceRow.toolCallsTitle': 'このワークスペースで {count} 件のツール呼び出し',
   'workspaceRow.closeWorkspace': 'ワークスペースを閉じる',
@@ -568,6 +570,7 @@ export const ja: Translation = {
   'workspace.defaultTitle': 'ワークスペース {n}',
   // サイドバーのエージェントリスト — リストが溢れたときの「+N 件」の要約行
   'agentView.moreSummary': 'ほか{n}件',
+  'agentView.backgroundShell': 'シェル',
   // 設定 — 通知音の名前
   'notificationSound.default': '既定',
   'notificationSound.chime': 'チャイム',

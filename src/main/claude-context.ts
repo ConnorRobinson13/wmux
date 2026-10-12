@@ -223,7 +223,9 @@ function getCliAbsolutePath(): string {
 }
 
 /** Tools tracked via PostToolUse hooks for the sidebar/diff view. */
-const TRACKED_TOOLS = ['Bash', 'Read', 'Write', 'Edit', 'Grep', 'Glob', 'Agent', 'WebSearch', 'WebFetch', 'Skill'];
+// PowerShell is Claude Code's other shell tool; like Bash it can run in the
+// background, and its PostToolUse is where that is reported (issue #276).
+const TRACKED_TOOLS = ['Bash', 'PowerShell', 'Read', 'Write', 'Edit', 'Grep', 'Glob', 'Agent', 'WebSearch', 'WebFetch', 'Skill'];
 
 /** Drop any wmux entry from one hook array, preserving the user's own hooks. */
 const stripWmux = (entries: any): any[] =>

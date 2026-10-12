@@ -206,6 +206,8 @@ export const sv: Translation = {
   'workspaceRow.done': 'Klar: {text}',
   'workspaceRow.orchestratingOne': 'Orkestrerar · {count} agent',
   'workspaceRow.orchestratingMany': 'Orkestrerar · {count} agenter',
+  'workspaceRow.backgroundShellsOne': 'Bakgrund · {count} skal',
+  'workspaceRow.backgroundShellsMany': 'Bakgrund · {count} skal',
   'workspaceRow.claudeRunning': '{working}/{total} körs',
   'workspaceRow.toolCallsTitle': '{count} verktygsanrop i den här arbetsytan',
   'workspaceRow.closeWorkspace': 'Stäng arbetsytan',
@@ -557,6 +559,7 @@ export const sv: Translation = {
   'workspace.defaultTitle': 'Arbetsyta {n}',
   // Sidopanelens agentlista — sammanfattningsrad "+N till" vid överflöd
   'agentView.moreSummary': '+{n} till',
+  'agentView.backgroundShell': 'skal',
   // Inställningar — namn på aviseringsljud
   'notificationSound.default': 'Standard',
   'notificationSound.chime': 'Klockspel',

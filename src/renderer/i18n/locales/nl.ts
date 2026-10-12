@@ -206,6 +206,8 @@ export const nl: Translation = {
   'workspaceRow.done': 'Klaar: {text}',
   'workspaceRow.orchestratingOne': 'Orkestratie · {count} agent',
   'workspaceRow.orchestratingMany': 'Orkestratie · {count} agenten',
+  'workspaceRow.backgroundShellsOne': 'Achtergrond · {count} shell',
+  'workspaceRow.backgroundShellsMany': 'Achtergrond · {count} shells',
   'workspaceRow.claudeRunning': '{working}/{total} actief',
   'workspaceRow.toolCallsTitle': '{count} tool-aanroepen in deze werkruimte',
   'workspaceRow.closeWorkspace': 'Werkruimte sluiten',
@@ -557,6 +559,7 @@ export const nl: Translation = {
   'workspace.defaultTitle': 'Werkruimte {n}',
   // Agentenlijst van de zijbalk — samenvatting "+N meer" bij overloop
   'agentView.moreSummary': '+{n} meer',
+  'agentView.backgroundShell': 'shell',
   // Instellingen — namen van meldingsgeluiden
   'notificationSound.default': 'Standaard',
   'notificationSound.chime': 'Klokkenspel',

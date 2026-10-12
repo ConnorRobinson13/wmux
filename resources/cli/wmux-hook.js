@@ -185,10 +185,67 @@ function salvageSessionId(raw) {
 const NOTIFICATION_TYPE_RE = /^[a-z][a-z0-9_]{0,63}$/;
 /** An agent id or type: an identifier, never free text. Anything else is dropped. */
 const AGENT_IDENT_RE = /^[\w.:@-]{1,128}$/;
+/** A background task id (`b71nbhepv`): an identifier, never free text. */
+const TASK_ID_RE = /^[\w-]{1,64}$/;
+const MAX_TASK_DETAIL = 120;
+/** Most notifications one prompt is searched for; Claude Code batches a few at most. */
+const MAX_TASK_NOTIFICATIONS = 32;
+/** Tools that stop a background task by id (`TaskStop`; older spellings kept). */
+const TASK_STOP_TOOLS = new Set(['TaskStop', 'KillShell', 'KillBash']);
+/**
+ * Is this "prompt" a task notification rather than something a human typed?
+ * Anchored at the start: a user pasting the tag into a sentence is a prompt.
+ */
+function isTaskNotification(prompt) {
+    return /^\s*<task-notification>/.test(prompt);
+}
+/**
+ * The ids of the tasks a notification prompt reports as finished. A block whose
+ * status is `running` is progress, not an ending, and is skipped.
+ */
+function endedTaskIds(prompt) {
+    const ids = [];
+    const blocks = prompt.split('<task-notification>').slice(1, MAX_TASK_NOTIFICATIONS + 1);
+    for (const block of blocks) {
+        const id = /<task-id>([^<]{1,64})<\/task-id>/.exec(block)?.[1]?.trim();
+        const status = /<status>([^<]{1,32})<\/status>/.exec(block)?.[1]?.trim();
+        if (id && TASK_ID_RE.test(id) && status !== 'running')
+            ids.push(id);
+    }
+    return ids;
+}
+/**
+ * One line of what a background shell is for, for its sidebar line: the tool
+ * call's own `description`, and never the command. A command line is where a
+ * credential reliably shows up, which is why main refuses to put one in front
+ * of a renderer (the `report_command` hard stop in index.ts).
+ */
+function taskDetail(toolInput) {
+    const raw = typeof toolInput?.description === 'string' ? toolInput.description : '';
+    return raw.replace(/\s+/g, ' ').trim().slice(0, MAX_TASK_DETAIL);
+}
+function readBackgroundTasks(data, toolInput, toolName, out) {
+    const response = data.tool_response ?? data.toolResponse;
+    const bgId = response && typeof response === 'object' ? response.backgroundTaskId : undefined;
+    if (!event && typeof bgId === 'string' && TASK_ID_RE.test(bgId)) {
+        out.bgTask = bgId;
+        out.bgTaskDetail = taskDetail(toolInput);
+    }
+    if (event === 'PreToolUse' && typeof toolName === 'string' && TASK_STOP_TOOLS.has(toolName)) {
+        const stopped = toolInput?.task_id ?? toolInput?.shell_id;
+        if (typeof stopped === 'string' && TASK_ID_RE.test(stopped))
+            out.bgTasksEnded = stopped;
+    }
+    if (event === 'UserPromptSubmit' && typeof data.prompt === 'string' && isTaskNotification(data.prompt)) {
+        out.bgTasksEnded = endedTaskIds(data.prompt).join(',');
+    }
+    if (event === 'SessionStart' && data.source === 'startup')
+        out.freshSession = true;
+}
 function parsePayload(raw) {
     const out = {
         file: '', message: '', sessionId: '', toolName: '', prompt: '', notificationType: '', subagent: false,
-        agentId: '', agentType: '',
+        agentId: '', agentType: '', bgTask: '', bgTaskDetail: '', bgTasksEnded: '', freshSession: false,
     };
     if (!raw.trim())
         return out;
@@ -254,9 +311,12 @@ function parsePayload(raw) {
     // Read ONLY for that event. Every other hook payload may carry unrelated
     // fields under names that could collide, and this helper's whitelist is the
     // boundary that keeps a transcript out of the pipe.
-    if (event === 'UserPromptSubmit' && typeof data.prompt === 'string') {
+    // A task notification is Claude Code talking to itself, not the user: it is
+    // read for the tasks it ends and kept out of the prompt log (#276).
+    if (event === 'UserPromptSubmit' && typeof data.prompt === 'string' && !isTaskNotification(data.prompt)) {
         out.prompt = data.prompt.slice(0, MAX_PROMPT);
     }
+    readBackgroundTasks(data, toolInput, toolName, out);
     return out;
 }
 /**
@@ -291,10 +351,11 @@ function reportedEvent(fired, subagent) {
 }
 /** The `hook.event` params: only the fields that carry something. */
 function hookParams(fields) {
-    const { file, message, sessionId, prompt, notificationType, agentId, agentType } = fields;
+    const { file, message, sessionId, prompt, notificationType, agentId, agentType, bgTask, bgTaskDetail, bgTasksEnded } = fields;
     const params = { at: firedAt };
     const optional = {
         event, tool, file, message, notificationType, prompt, agentId, agentType, surfaceId,
+        bgTask, bgTaskDetail, bgTasksEnded, freshSession: fields.freshSession ? '1' : '',
         // Not under Grok (it sets GROK_HOOK_EVENT on every hook process). Grok
         // 1.0.44 sends `session_id` alongside `sessionId`, and an id recorded here
         // ends up on a `claude --resume` command line at restore — naming a session

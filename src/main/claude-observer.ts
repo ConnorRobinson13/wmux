@@ -39,6 +39,12 @@ export interface AgentActivity {
   detail?: string;
   /** Last time a declared subagent reported anything — the renderer's ghost guard. */
   touchedAt?: number;
+  /**
+   * `shell`: not a subagent at all but a shell the agent left running in the
+   * background (issue #276). Drawn on the same line, counted apart — a pane
+   * whose tests run on after the turn is not "Orchestrating" anything.
+   */
+  kind?: 'shell';
 }
 
 /** One `reportSubagent` call. Every field but `id` is optional and sticky. */
@@ -49,6 +55,8 @@ export interface SubagentReport {
   done?: boolean;
   /** Count one tool use (a hook fired from inside the subagent). */
   toolUse?: boolean;
+  /** See AgentActivity.kind. Set on the report that creates the line. */
+  kind?: 'shell';
 }
 
 export interface ClaudeActivity {
@@ -418,6 +426,7 @@ export function reportSubagent(surfaceId: SurfaceId, report: SubagentReport): bo
   if (name) agent.name = name;
   if (report.detail !== undefined) agent.detail = sanitizeSubagentText(report.detail, MAX_SUBAGENT_DETAIL);
   if (report.toolUse) agent.toolUses++;
+  if (report.kind) agent.kind = report.kind;
   if (report.done !== undefined) agent.done = report.done;
   const now = Date.now();
   agent.touchedAt = now;

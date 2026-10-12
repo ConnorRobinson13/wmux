@@ -23,6 +23,12 @@ export interface StatusTextInputs {
   agentCounts?: AgentCounts;
   runningAgentCount: number;
   agentTotal: number;
+  /**
+   * Shells left running in the background by this workspace's agents (#276).
+   * Ranked just above "Idle" in every chain and below anything that says the
+   * agent itself is working: a turn in progress is the finer fact.
+   */
+  backgroundShellCount?: number;
   sessionCount: number;
   workingSessions: number;
   blockedSessions: number;
@@ -87,12 +93,23 @@ function needsYouText(blocked: number, t: T): string {
     : t('workspaceRow.needsYou', 'Needs you');
 }
 
+/** "Background · 2 shells" — the agent is idle, something it started is not (#276). */
+export function backgroundShellsText(count: number, t: T): string {
+  return (count > 1
+    ? t('workspaceRow.backgroundShellsMany', 'Background · {count} shells')
+    : t('workspaceRow.backgroundShellsOne', 'Background · {count} shell')
+  ).replace('{count}', String(count));
+}
+
 /** The multi-session summary line, or "Idle" when none of them is working. */
 function multiSessionText(s: StatusTextInputs, agent: MergedAgentSignals, t: T): string {
   // Clamped: the roster can see agents this workspace has no tracked SESSION
   // for, and "3/2 running" reads as a bug rather than as detection working.
   const working = Math.min(agent.working, s.sessionCount);
-  if (working === 0) return t('workspaceRow.idle', 'Idle');
+  if (working === 0) {
+    const shells = s.backgroundShellCount ?? 0;
+    return shells > 0 ? backgroundShellsText(shells, t) : t('workspaceRow.idle', 'Idle');
+  }
   return t('workspaceRow.claudeRunning', '{working}/{total} running')
     .replace('{working}', String(working))
     .replace('{total}', String(s.sessionCount));
@@ -143,6 +160,11 @@ export function claudeStatusText(s: StatusTextInputs, t: T): string | null {
   // sessionDetailText — so the row contradicted the very lines beneath it.
   if (agent.working > 0) return t('workspaceRow.sessionRunning', 'Running…');
 
+  // Priority 1.75: the turn is over but a shell it started is not (#276) —
+  // tests left running with run_in_background, or a command sent there with
+  // Ctrl+B. Above Priority 2, which is exactly the "Idle" it used to read.
+  if ((s.backgroundShellCount ?? 0) > 0) return backgroundShellsText(s.backgroundShellCount ?? 0, t);
+
   // Priority 2: Claude was working but stopped → idle, not "Running"
   if (agent.idle) return t('workspaceRow.idle', 'Idle');
 
@@ -168,12 +190,15 @@ export function statusClassFor(s: StatusTextInputs): string {
   const agent = mergedAgentSignals(s);
   if (agent.blocked > 0) return 'workspace-row__status--blocked';
   if (s.runningAgentCount > 0) return 'workspace-row__status--working';
+  const shells = (s.backgroundShellCount ?? 0) > 0;
   if (s.sessionCount >= 2) {
-    return agent.working > 0 ? 'workspace-row__status--working' : 'workspace-row__status--idle';
+    return agent.working > 0 || shells ? 'workspace-row__status--working' : 'workspace-row__status--idle';
   }
   if (s.currentToolLabel) return 'workspace-row__status--working';
   // Mirrors Priority 1.5 above — the claim, with no live tool label.
   if (agent.working > 0) return 'workspace-row__status--working';
+  // Mirrors Priority 1.75 — background shells (#276).
+  if (shells) return 'workspace-row__status--working';
   if (agent.idle) return 'workspace-row__status--idle';
   return shellStatusClass(s.shellState);
 }
@@ -221,7 +246,10 @@ export function stateDotClassFor(s: StatusTextInputs, isClaudeActive: boolean): 
   if (agent.blocked > 0) return 'workspace-row__state-dot--blocked';
   // Mirrors Priority 0.5: a row reading "Orchestrating" (a background subagent
   // still at work after its parent's turn ended, #272) must not wear an idle dot.
-  if (isClaudeActive || agent.working > 0 || s.runningAgentCount > 0) return 'workspace-row__state-dot--running';
+  // And Priority 1.75: a background shell is work in flight, not idleness (#276).
+  if (isClaudeActive || agent.working > 0 || s.runningAgentCount > 0 || (s.backgroundShellCount ?? 0) > 0) {
+    return 'workspace-row__state-dot--running';
+  }
   if (agent.idle) return 'workspace-row__state-dot--idle';
   if (s.shellState === 'running') return 'workspace-row__state-dot--running';
   if (s.shellState === 'interrupted') return 'workspace-row__state-dot--interrupted';

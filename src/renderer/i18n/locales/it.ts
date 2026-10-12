@@ -206,6 +206,8 @@ export const it: Translation = {
   'workspaceRow.done': 'Fatto: {text}',
   'workspaceRow.orchestratingOne': 'Orchestrazione · {count} agente',
   'workspaceRow.orchestratingMany': 'Orchestrazione · {count} agenti',
+  'workspaceRow.backgroundShellsOne': 'In background · {count} shell',
+  'workspaceRow.backgroundShellsMany': 'In background · {count} shell',
   'workspaceRow.claudeRunning': '{working}/{total} in esecuzione',
   'workspaceRow.toolCallsTitle': '{count} chiamate strumento in questa area di lavoro',
   'workspaceRow.closeWorkspace': "Chiudi l'area di lavoro",
@@ -557,6 +559,7 @@ export const it: Translation = {
   'workspace.defaultTitle': 'Area di lavoro {n}',
   // Elenco agenti sidebar — riepilogo "+N altri" quando l'elenco eccede
   'agentView.moreSummary': '+{n} altri',
+  'agentView.backgroundShell': 'shell',
   // Impostazioni — nomi suoni di notifica
   'notificationSound.default': 'Predefinito',
   'notificationSound.chime': 'Campanello',

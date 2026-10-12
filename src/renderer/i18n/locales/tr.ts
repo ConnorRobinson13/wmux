@@ -217,6 +217,8 @@ export const tr: Translation = {
   'workspaceRow.done': 'Bitti: {text}',
   'workspaceRow.orchestratingOne': 'Orkestrasyon · {count} ajan',
   'workspaceRow.orchestratingMany': 'Orkestrasyon · {count} ajan çalışıyor',
+  'workspaceRow.backgroundShellsOne': 'Arka planda · {count} kabuk',
+  'workspaceRow.backgroundShellsMany': 'Arka planda · {count} kabuk',
   'workspaceRow.claudeRunning': '{working}/{total} çalışıyor',
   'workspaceRow.toolCallsTitle': 'Bu çalışma alanında {count} araç çağrısı',
   'workspaceRow.closeWorkspace': 'Çalışma alanını kapat',
@@ -568,6 +570,7 @@ export const tr: Translation = {
   'workspace.defaultTitle': 'Çalışma Alanı {n}',
   // Kenar çubuğu aracı listesi — liste taştığında "+N daha" özet satırı
   'agentView.moreSummary': '+{n} daha',
+  'agentView.backgroundShell': 'kabuk',
   // Ayarlar — bildirim sesi adları
   'notificationSound.default': 'Varsayılan',
   'notificationSound.chime': 'Şıkırtı',

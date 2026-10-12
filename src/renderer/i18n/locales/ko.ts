@@ -223,6 +223,8 @@ export const ko: Translation = {
   // 한국어에는 복수형이 없어 두 키가 같은 문장이 됩니다 (둘 다 있어야 합니다).
   'workspaceRow.orchestratingOne': '오케스트레이션 중 · 에이전트 {count}개',
   'workspaceRow.orchestratingMany': '오케스트레이션 중 · 에이전트 {count}개',
+  'workspaceRow.backgroundShellsOne': '백그라운드 · 셸 {count}개',
+  'workspaceRow.backgroundShellsMany': '백그라운드 · 셸 {count}개',
   'workspaceRow.claudeRunning': '{working}/{total} 실행 중',
   'workspaceRow.toolCallsTitle': '이 작업 공간의 도구 호출 {count}건',
   'workspaceRow.closeWorkspace': '작업 공간 닫기',
@@ -577,6 +579,7 @@ export const ko: Translation = {
   'workspace.defaultTitle': '작업 공간 {n}',
   // 사이드바 에이전트 목록 — 목록이 넘칠 때의 요약 줄
   'agentView.moreSummary': '외 {n}개',
+  'agentView.backgroundShell': '셸',
   // 설정 — 알림음 이름
   'notificationSound.default': '기본',
   'notificationSound.chime': '차임',

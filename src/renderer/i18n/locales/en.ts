@@ -267,6 +267,8 @@ export const en = {
   'workspaceRow.done': 'Done: {text}',
   'workspaceRow.orchestratingOne': 'Orchestrating · {count} agent',
   'workspaceRow.orchestratingMany': 'Orchestrating · {count} agents',
+  'workspaceRow.backgroundShellsOne': 'Background · {count} shell',
+  'workspaceRow.backgroundShellsMany': 'Background · {count} shells',
   'workspaceRow.claudeRunning': '{working}/{total} running',
   'workspaceRow.toolCallsTitle': '{count} tool calls in this workspace',
   'workspaceRow.closeWorkspace': 'Close workspace',
@@ -742,6 +744,7 @@ export const en = {
   'workspace.defaultTitle': 'Workspace {n}',
   // Sidebar agent list — "+N more" summary line when the list overflows
   'agentView.moreSummary': '+{n} more',
+  'agentView.backgroundShell': 'shell',
   // Settings — notification sound names
   'notificationSound.default': 'Default',
   'notificationSound.chime': 'Chime',

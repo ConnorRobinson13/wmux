@@ -217,6 +217,8 @@ export const hi: Translation = {
   'workspaceRow.done': 'पूर्ण: {text}',
   'workspaceRow.orchestratingOne': 'ऑर्केस्ट्रेशन · {count} एजेंट चल रहा है',
   'workspaceRow.orchestratingMany': 'ऑर्केस्ट्रेशन · {count} एजेंट चल रहे हैं',
+  'workspaceRow.backgroundShellsOne': 'बैकग्राउंड · {count} शेल',
+  'workspaceRow.backgroundShellsMany': 'बैकग्राउंड · {count} शेल',
   'workspaceRow.claudeRunning': '{working}/{total} चालू',
   'workspaceRow.toolCallsTitle': 'इस वर्कस्पेस में {count} टूल कॉल',
   'workspaceRow.closeWorkspace': 'वर्कस्पेस बंद करें',
@@ -568,6 +570,7 @@ export const hi: Translation = {
   'workspace.defaultTitle': 'वर्कस्पेस {n}',
   // साइडबार एजेंट सूची — सूची छलकने पर "+N और" सारांश पंक्ति
   'agentView.moreSummary': '+{n} और',
+  'agentView.backgroundShell': 'शेल',
   // सेटिंग्स — सूचना ध्वनि के नाम
   'notificationSound.default': 'डिफ़ॉल्ट',
   'notificationSound.chime': 'चाइम',

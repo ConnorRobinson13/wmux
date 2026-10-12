@@ -206,6 +206,8 @@ export const de: Translation = {
   'workspaceRow.done': 'Fertig: {text}',
   'workspaceRow.orchestratingOne': 'Orchestrierung · {count} Agent',
   'workspaceRow.orchestratingMany': 'Orchestrierung · {count} Agenten',
+  'workspaceRow.backgroundShellsOne': 'Hintergrund · {count} Shell',
+  'workspaceRow.backgroundShellsMany': 'Hintergrund · {count} Shells',
   'workspaceRow.claudeRunning': '{working}/{total} laufen',
   'workspaceRow.toolCallsTitle': '{count} Werkzeugaufrufe in diesem Arbeitsbereich',
   'workspaceRow.closeWorkspace': 'Arbeitsbereich schließen',
@@ -557,6 +559,7 @@ export const de: Translation = {
   'workspace.defaultTitle': 'Arbeitsbereich {n}',
   // Agentenliste der Seitenleiste — Zusammenfassung „+N weitere“ bei Überlauf
   'agentView.moreSummary': '+{n} weitere',
+  'agentView.backgroundShell': 'Shell',
   // Einstellungen — Namen der Benachrichtigungstöne
   'notificationSound.default': 'Standard',
   'notificationSound.chime': 'Glockenspiel',

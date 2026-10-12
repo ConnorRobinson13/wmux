@@ -419,6 +419,9 @@ function recordPromptSubmission(event: any): void {
   const surfaceId = typeof event.surfaceId === 'string' ? event.surfaceId : '';
   const prompt = typeof event.prompt === 'string' ? event.prompt : '';
   if (!surfaceId || !prompt) return;
+  // Claude Code feeds a finished background task back as the next turn's input
+  // (#276). The hook helper keeps it out already; this holds for an older copy.
+  if (/^\s*<task-notification>/.test(prompt)) return;
   const terminal = surfaceTerminalRegistry.get(surfaceId);
   if (!terminal) return;
   // `at` is stamped at hook PROCESS START, not on arrival — hook processes race

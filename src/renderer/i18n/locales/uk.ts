@@ -217,6 +217,8 @@ export const uk: Translation = {
   'workspaceRow.done': 'Готово: {text}',
   'workspaceRow.orchestratingOne': 'Оркестрація · {count} агент',
   'workspaceRow.orchestratingMany': 'Оркестрація · {count} агентів',
+  'workspaceRow.backgroundShellsOne': 'У фоні · {count} оболонка',
+  'workspaceRow.backgroundShellsMany': 'У фоні · оболонок: {count}',
   'workspaceRow.claudeRunning': '{working}/{total} виконується',
   'workspaceRow.toolCallsTitle': '{count} викликів інструментів у цьому робочому просторі',
   'workspaceRow.closeWorkspace': 'Закрити робочий простір',
@@ -568,6 +570,7 @@ export const uk: Translation = {
   'workspace.defaultTitle': 'Робочий простір {n}',
   // Список агентів у бічній панелі — рядок зведення «+N ще» при переповненні
   'agentView.moreSummary': 'ще {n}',
+  'agentView.backgroundShell': 'оболонка',
   // Налаштування — назви звуків сповіщень
   'notificationSound.default': 'За замовчуванням',
   'notificationSound.chime': 'Дзвіночки',

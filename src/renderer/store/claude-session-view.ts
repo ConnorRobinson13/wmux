@@ -1,5 +1,6 @@
 import { SplitNode, SurfaceId, PaneId } from '../../shared/types';
 import { surfaceAgentState, type DetectionSnapshot } from './agent-rollup';
+import { runningBackgroundShells } from './agent-view';
 
 /** One sidebar hook-activity entry — written by App.tsx from Claude Code hook events. */
 export interface HookActivityEntry {
@@ -10,7 +11,7 @@ export interface HookActivityEntry {
 
 /** Observer shape (subset of ClaudeActivity from src/main/claude-observer.ts). */
 interface ObserverActivity {
-  agents: Array<{ name: string; toolUses: number; tokens: string; done: boolean }>;
+  agents: Array<{ name: string; toolUses: number; tokens: string; done: boolean; id?: string; kind?: 'shell'; touchedAt?: number }>;
   activeSkill: string | null;
   lastTool: string | null;
   lastUpdate: number;
@@ -43,6 +44,12 @@ export interface ClaudeSessionView {
   /** User-set tab title, else folder name of the pane's cwd — distinguishes sessions at a glance. */
   label: string;
   working: boolean;
+  /**
+   * Shells this pane's agent left running in the background (#276). Says
+   * nothing about `working`: the agent may be idle at its prompt while they
+   * run, and a sub-line reading "Idle" over a running test suite is the bug.
+   */
+  backgroundShells: number;
   /**
    * The agent is parked on a human — a permission prompt, a question, a menu.
    * Distinct from `working`: a blocked agent emits nothing while it waits, so
@@ -202,6 +209,7 @@ export function claudeSessionsForWorkspace(
       // User-set tab title wins (rename must reflect here); cwd folder second.
       label: customTitle ?? cwdBasename(currentCwd) ?? detection?.agent ?? 'Agent',
       ...activity,
+      backgroundShells: runningBackgroundShells(observed, now),
       skill: observed?.activeSkill ?? null,
     });
     if (activity.working) working++;

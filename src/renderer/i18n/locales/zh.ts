@@ -202,6 +202,8 @@ export const zh: Translation = {
   'workspaceRow.done': '已完成：{text}',
   'workspaceRow.orchestratingOne': '编排中 · {count} 个代理',
   'workspaceRow.orchestratingMany': '编排中 · {count} 个代理',
+  'workspaceRow.backgroundShellsOne': '后台 · {count} 个 shell',
+  'workspaceRow.backgroundShellsMany': '后台 · {count} 个 shell',
   'workspaceRow.claudeRunning': '{working}/{total} 运行中',
   'workspaceRow.toolCallsTitle': '此工作区共调用工具 {count} 次',
   'workspaceRow.closeWorkspace': '关闭工作区',
@@ -551,6 +553,7 @@ export const zh: Translation = {
   'workspace.defaultTitle': '工作区 {n}',
   // 侧边栏代理列表 — 列表溢出时的“+N 更多”摘要
   'agentView.moreSummary': '还有 {n} 个',
+  'agentView.backgroundShell': 'shell',
   // 设置 — 通知声音名称
   'notificationSound.default': '默认',
   'notificationSound.chime': '铃声',

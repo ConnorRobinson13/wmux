@@ -1060,6 +1060,10 @@ function applyHookLifecycle(params: any): void {
   const agentId = typeof params.agentId === 'string' ? params.agentId : '';
   const name = typeof params.agentType === 'string' ? params.agentType : undefined;
   if (params.event === 'SessionEnd') { endDeclaredSubagents(sid); return; }
+  // A fresh Claude Code process: whatever the previous one left recorded here
+  // ended with it, or at least is no longer this session's to report.
+  if (params.event === 'SessionStart' && params.freshSession === '1') endDeclaredSubagents(sid);
+  applyBackgroundShells(sid, params);
   if (!agentId) {
     if (params.event === 'SubagentStop') markSubagentStop(sid);
     else if (params.event === 'Stop') markAllAgentsDone(sid);
@@ -1069,6 +1073,37 @@ function applyHookLifecycle(params: any): void {
   else if (params.event === 'SubagentStop') reportSubagent(sid, { id: agentId, name, done: true });
   else if (params.event === 'PreToolUse') {
     reportSubagent(sid, { id: agentId, name, detail: typeof params.tool === 'string' ? params.tool : undefined, toolUse: true });
+  }
+}
+
+/**
+ * Background shells (issue #276): a Bash/PowerShell call Claude Code moved to
+ * the background keeps running after the turn ends, and the pane used to read
+ * "Idle" over a test suite still going. Drawn as a declared line of kind
+ * `shell`, keyed `shell:<task id>`.
+ *
+ * Every signal is a hook, so this works wherever the hooks do — WSL, a
+ * devcontainer through `wmux bridge` — with no process polling. The start is
+ * the PostToolUse that carries `backgroundTaskId`; the end is the
+ * `<task-notification>` Claude Code feeds its next turn (UserPromptSubmit,
+ * which it fires mid-turn too), a `TaskStop`, or the session ending. The
+ * parent's Stop never ends one, for the same reason it never ends a #272
+ * subagent: the shell outlives the turn by design.
+ */
+function applyBackgroundShells(sid: SurfaceId, params: any): void {
+  if (typeof params.bgTask === 'string' && params.bgTask) {
+    reportSubagent(sid, {
+      id: `shell:${params.bgTask}`,
+      name: 'shell',
+      detail: typeof params.bgTaskDetail === 'string' ? params.bgTaskDetail : '',
+      kind: 'shell',
+      done: false,
+    });
+  }
+  if (typeof params.bgTasksEnded === 'string' && params.bgTasksEnded) {
+    for (const id of params.bgTasksEnded.split(',').slice(0, 32)) {
+      if (id) reportSubagent(sid, { id: `shell:${id}`, done: true });
+    }
   }
 }
 

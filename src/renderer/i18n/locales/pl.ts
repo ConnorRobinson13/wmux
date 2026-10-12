@@ -217,6 +217,8 @@ export const pl: Translation = {
   'workspaceRow.done': 'Gotowe: {text}',
   'workspaceRow.orchestratingOne': 'Orkiestracja · {count} agent',
   'workspaceRow.orchestratingMany': 'Orkiestracja · {count} agentów',
+  'workspaceRow.backgroundShellsOne': 'W tle · {count} powłoka',
+  'workspaceRow.backgroundShellsMany': 'W tle · powłoki: {count}',
   'workspaceRow.claudeRunning': '{working}/{total} uruchomionych',
   'workspaceRow.toolCallsTitle': '{count} wywołań narzędzi w tym obszarze roboczym',
   'workspaceRow.closeWorkspace': 'Zamknij obszar roboczy',
@@ -568,6 +570,7 @@ export const pl: Translation = {
   'workspace.defaultTitle': 'Obszar roboczy {n}',
   // Lista agentów w panelu bocznym — linia podsumowania „+N więcej” przy przepełnieniu
   'agentView.moreSummary': '+{n} więcej',
+  'agentView.backgroundShell': 'powłoka',
   // Ustawienia — nazwy dźwięków powiadomień
   'notificationSound.default': 'Domyślny',
   'notificationSound.chime': 'Dzwonki',

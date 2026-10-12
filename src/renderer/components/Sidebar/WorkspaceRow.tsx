@@ -10,10 +10,10 @@ import { rollupAgents } from '../../store/agent-rollup';
 import UnreadBadge from './UnreadBadge';
 import PrStatusIcon from './PrStatusIcon';
 import { traceState, toolChannel } from './trace-signals';
-import { resolveStatusText, statusClassFor, stateDotClassFor, type StatusTextInputs, type T } from './workspace-status';
+import { resolveStatusText, statusClassFor, stateDotClassFor, backgroundShellsText, type StatusTextInputs, type T } from './workspace-status';
 
 /** Stable empty view — avoids allocating a fresh object every collapsed tick. */
-const EMPTY_AGENTS_VIEW: WorkspaceAgentsView = { lines: [], total: 0, running: 0 };
+const EMPTY_AGENTS_VIEW: WorkspaceAgentsView = { lines: [], total: 0, running: 0, shells: 0 };
 
 function getAllSurfaceIds(tree: SplitNode): string[] {
   if (tree.type === 'leaf') return tree.surfaces.map(s => s.id);
@@ -40,7 +40,7 @@ function getToolLabel(tool: string, t: T): string {
 }
 
 /** Detail text of one Claude session sub-line. */
-function sessionDetailText(session: { working: boolean; blocked: boolean; blockedReason: string | null; tool: string | null; answerPending?: boolean }, t: T): string {
+function sessionDetailText(session: { working: boolean; blocked: boolean; blockedReason: string | null; tool: string | null; answerPending?: boolean; backgroundShells?: number }, t: T): string {
   // Blocked outranks the tool label: a pane parked on a permission prompt is
   // the one thing the user has to act on, so it must not read as "Idle" just
   // because no tool is running (issue #128).
@@ -50,7 +50,11 @@ function sessionDetailText(session: { working: boolean; blocked: boolean; blocke
   // our own say-so is exactly the ghost this feature exists to avoid.
   if (session.answerPending) return t('workspaceRow.answerSent', 'Sent — waiting…');
   if (session.blocked) return session.blockedReason || t('workspaceRow.needsYou', 'Needs you');
-  if (!session.working) return t('workspaceRow.idle', 'Idle');
+  if (!session.working) {
+    // The agent is at its prompt, but a shell it backgrounded runs on (#276).
+    const shells = session.backgroundShells ?? 0;
+    return shells > 0 ? backgroundShellsText(shells, t) : t('workspaceRow.idle', 'Idle');
+  }
   return session.tool ? getToolLabel(session.tool, t) : t('workspaceRow.sessionRunning', 'Running…');
 }
 
@@ -174,7 +178,8 @@ export default function WorkspaceRow({
     const now = Date.now();
     const view = agentsForWorkspace(workspace.splitTree, claudeActivity ?? {}, agentMeta, now, t);
     if (view.lines.length === 0) { doneAtRef.current = null; return EMPTY_AGENTS_VIEW; }
-    const linger = resolveAgentLinger(view.running === 0, doneAtRef.current, now);
+    // A running background shell keeps the lines up as much as an agent does (#276).
+    const linger = resolveAgentLinger(view.running + view.shells === 0, doneAtRef.current, now);
     // The ref write lives in the memo, not an effect: the linger decision must
     // resolve synchronously with the list it gates (an effect would apply the
     // doneAt stamp one render late). Idempotent, so a StrictMode double render
@@ -348,6 +353,7 @@ export default function WorkspaceRow({
     agentCounts,
     runningAgentCount,
     agentTotal: wsAgents.total,
+    backgroundShellCount: wsAgents.shells,
     sessionCount: sessions.length,
     workingSessions,
     blockedSessions,
@@ -515,7 +521,7 @@ export default function WorkspaceRow({
                 'workspace-row__agent--clickable',
                 'workspace-row__session',
                 s.blocked ? 'workspace-row__session--blocked' : '',
-                s.working || s.blocked ? '' : 'workspace-row__session--idle',
+                s.working || s.blocked || s.backgroundShells > 0 ? '' : 'workspace-row__session--idle',
               ].filter(Boolean).join(' ')}
               // Per-session channel: this is what makes "that one is REWRITING
               // my code, that one is only reading" legible at a glance. Bound
@@ -531,7 +537,7 @@ export default function WorkspaceRow({
             >
               <span className="workspace-row__agent-glyph" aria-hidden="true">{i === sessions.length - 1 ? '└' : '├'}</span>
               {s.blocked && <span className="workspace-row__agent-dot workspace-row__agent-dot--blocked" />}
-              {s.working && !s.blocked && <span className="workspace-row__agent-dot" />}
+              {(s.working || s.backgroundShells > 0) && !s.blocked && <span className="workspace-row__agent-dot" />}
               <span className="workspace-row__agent-name">{s.label}</span>
               <span className={`workspace-row__agent-detail${uiMode === 'trace' ? ' workspace-row__session-tool' : ''}`}>
                 {sessionDetailText(s, t)}

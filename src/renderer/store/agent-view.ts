@@ -15,6 +15,8 @@ export interface WorkspaceAgent {
   paneId?: PaneId;
   /** Tool-use count of an observer-parsed agent — feeds the "+N more" summary. */
   toolUses?: number;
+  /** A background shell (#276): drawn like an agent, counted apart from them. */
+  shell?: boolean;
 }
 
 /** Observer agent shape (subset of ClaudeActivity from src/main/claude-observer.ts). */
@@ -27,6 +29,8 @@ interface ObserverAgent {
   id?: string;
   detail?: string;
   touchedAt?: number;
+  /** `shell`: a background shell, not a subagent (#276). */
+  kind?: 'shell';
 }
 
 interface ObserverActivity {
@@ -44,15 +48,37 @@ const OBSERVER_TTL_MS = 5 * 60 * 1000; // stale observer data never renders (gho
  */
 export const DECLARED_SUBAGENT_TTL_MS = 10 * 60 * 1000;
 
-function declaredLine(surfaceId: string, a: ObserverAgent, now: number): WorkspaceAgent | null {
-  if (!a.done && now - (a.touchedAt ?? 0) > DECLARED_SUBAGENT_TTL_MS) return null;
+/**
+ * The ghost guard for a background shell (#276). A shell says nothing while it
+ * runs — there is no heartbeat to miss — so the subagent TTL above would drop a
+ * test suite at its tenth minute. Its end is reported by Claude Code itself
+ * (the task notification, TaskStop, SessionEnd), so this only bounds the case
+ * where every one of those was lost, e.g. Claude Code killed outright.
+ */
+export const BACKGROUND_SHELL_TTL_MS = 12 * 60 * 60 * 1000;
+
+function isLive(a: ObserverAgent, now: number): boolean {
+  const ttl = a.kind === 'shell' ? BACKGROUND_SHELL_TTL_MS : DECLARED_SUBAGENT_TTL_MS;
+  return a.done || now - (a.touchedAt ?? 0) <= ttl;
+}
+
+/** Background shells still running in one pane (#276). */
+export function runningBackgroundShells(activity: ObserverActivity | undefined, now: number): number {
+  if (!activity) return 0;
+  return activity.agents.filter(a => a.id && a.kind === 'shell' && !a.done && isLive(a, now)).length;
+}
+
+function declaredLine(surfaceId: string, a: ObserverAgent, now: number, t: T): WorkspaceAgent | null {
+  if (!isLive(a, now)) return null;
   const parts = [a.toolUses > 0 ? `⚒${a.toolUses}` : '', a.detail ?? ''].filter(Boolean);
+  const shell = a.kind === 'shell';
   return {
     key: `${surfaceId}#${a.id}`,
-    name: a.name,
+    name: shell ? t('agentView.backgroundShell', 'shell') : a.name,
     detail: a.done ? '✓' : parts.join(' · '),
     done: a.done,
     toolUses: a.toolUses,
+    ...(shell ? { shell: true } : {}),
   };
 }
 const MAX_LINES = 4;
@@ -69,14 +95,14 @@ function collectSurfacePanes(tree: SplitNode, out: Array<{ surfaceId: SurfaceId;
   collectSurfacePanes(tree.children[1], out);
 }
 
-function observerLines(surfaceId: string, activity: ObserverActivity | undefined, now: number): WorkspaceAgent[] {
+function observerLines(surfaceId: string, activity: ObserverActivity | undefined, now: number, t: T): WorkspaceAgent[] {
   if (!activity) return [];
   // Declared beats scraped, the #128 rule: once the pane names its subagents
   // itself, the screen parser's guesses about the same agents (under other
   // names — a description rather than a type) would only draw them twice.
   const declared = activity.agents.filter(a => a.id);
   if (declared.length > 0) {
-    return declared.map(a => declaredLine(surfaceId, a, now)).filter((l): l is WorkspaceAgent => l !== null);
+    return declared.map(a => declaredLine(surfaceId, a, now, t)).filter((l): l is WorkspaceAgent => l !== null);
   }
   if (now - activity.lastUpdate > OBSERVER_TTL_MS) return [];
   return activity.agents.map(a => ({
@@ -116,8 +142,10 @@ export interface WorkspaceAgentsView {
   lines: WorkspaceAgent[];
   /** True number of merged agents, before summarize() truncates. */
   total: number;
-  /** True number of still-running agents, before summarize() truncates. */
+  /** True number of still-running agents, before summarize() truncates. Shells excluded. */
   running: number;
+  /** Background shells still running (#276) — lines in `lines`, but not agents. */
+  shells: number;
 }
 
 /**
@@ -138,15 +166,21 @@ export function agentsForWorkspace(
 
   const merged: WorkspaceAgent[] = [];
   for (const { surfaceId, paneId } of pairs) {
-    merged.push(...observerLines(surfaceId, claudeActivity[surfaceId], now));
+    merged.push(...observerLines(surfaceId, claudeActivity[surfaceId], now, t));
     const wmux = wmuxLine(surfaceId, paneId, agentMeta.get(surfaceId));
     if (wmux) merged.push(wmux);
   }
 
   // Stable partition: running agents first, done ones after.
-  const runningAgents = merged.filter(a => !a.done);
-  const ordered = [...runningAgents, ...merged.filter(a => a.done)];
-  return { lines: summarize(ordered, t), total: merged.length, running: runningAgents.length };
+  const runningLines = merged.filter(a => !a.done);
+  const ordered = [...runningLines, ...merged.filter(a => a.done)];
+  const shells = runningLines.filter(a => a.shell).length;
+  return {
+    lines: summarize(ordered, t),
+    total: merged.filter(a => !a.shell).length,
+    running: runningLines.length - shells,
+    shells,
+  };
 }
 
 /**

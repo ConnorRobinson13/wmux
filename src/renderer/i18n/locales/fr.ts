@@ -208,6 +208,8 @@ export const fr: Translation = {
   'workspaceRow.done': 'Terminé : {text}',
   'workspaceRow.orchestratingOne': 'Orchestration · {count} agent',
   'workspaceRow.orchestratingMany': 'Orchestration · {count} agents',
+  'workspaceRow.backgroundShellsOne': 'Arrière-plan · {count} shell',
+  'workspaceRow.backgroundShellsMany': 'Arrière-plan · {count} shells',
   'workspaceRow.claudeRunning': '{working}/{total} en cours',
   'workspaceRow.toolCallsTitle': '{count} appels d’outils dans cet espace de travail',
   'workspaceRow.closeWorkspace': "Fermer l'espace de travail",
@@ -609,6 +611,7 @@ export const fr: Translation = {
   'workspace.defaultTitle': 'Espace de travail {n}',
   // Liste d'agents de la barre latérale — résumé « +N de plus » en cas de débordement
   'agentView.moreSummary': '+{n} de plus',
+  'agentView.backgroundShell': 'shell',
   // Paramètres — noms des sons de notification
   'notificationSound.default': 'Par défaut',
   'notificationSound.chime': 'Carillon',
