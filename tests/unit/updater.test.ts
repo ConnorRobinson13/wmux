@@ -560,3 +560,49 @@ describe('portable zip install that cannot run (#3)', () => {
     expect(zipMocks.applyStagedPortableUpdate).toHaveBeenCalledTimes(1);
   });
 });
+
+/**
+ * Issue #275: every periodic re-check found the same release, electron-updater
+ * served it from cache, and `update-downloaded` reopened the install dialog —
+ * for a version the user had already answered 'Later' to.
+ */
+describe('install dialog asks once per version (#275)', () => {
+  beforeEach(() => {
+    fakeApp.isPackaged = true;
+    fakeApp.exePath = '';
+    delete process.env.WMUX_DISABLE_UPDATER;
+    fakeDialog.showMessageBox.mockReset().mockResolvedValue({ response: 1 });
+  });
+
+  function handlers(au: any): Record<string, (info: any) => Promise<void>> {
+    return Object.fromEntries(au.on.mock.calls.map(([ev, fn]: [string, any]) => [ev, fn]));
+  }
+
+  it('does not reopen the dialog for a version declined with Later', async () => {
+    const u = await freshUpdater();
+    u.initAutoUpdater();
+    const h = handlers(u.autoUpdater);
+    await h['update-downloaded']({ version: '9.9.9' });
+    await h['update-downloaded']({ version: '9.9.9' });
+    expect(fakeDialog.showMessageBox).toHaveBeenCalledTimes(1);
+    expect(u.getUpdateState()).toMatchObject({ phase: 'ready', version: '9.9.9' });
+  });
+
+  it('still asks about a newer version', async () => {
+    const u = await freshUpdater();
+    u.initAutoUpdater();
+    const h = handlers(u.autoUpdater);
+    await h['update-downloaded']({ version: '9.9.9' });
+    await h['update-downloaded']({ version: '9.9.10' });
+    expect(fakeDialog.showMessageBox).toHaveBeenCalledTimes(2);
+  });
+
+  it('still installs from the badge after Later', async () => {
+    const u = await freshUpdater();
+    u.initAutoUpdater();
+    await handlers(u.autoUpdater)['update-downloaded']({ version: '9.9.9' });
+    await expect(u.requestUpdateNow()).resolves.toEqual({ handled: true });
+    await new Promise((r) => setImmediate(r));
+    expect(u.autoUpdater.quitAndInstall).toHaveBeenCalledTimes(1);
+  });
+});

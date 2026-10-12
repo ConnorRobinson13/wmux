@@ -61,6 +61,13 @@ async function releaseAgeMs(version: string): Promise<number | null> {
 }
 
 let installPrompted = false;
+// The version the user answered 'Later' to (#275). The periodic re-check finds
+// the same release again, electron-updater serves it from its cache in a
+// second, and `update-downloaded` fires again — so without this every re-check
+// reopened the dialog for a version already declined. Session-only on purpose:
+// the badge keeps saying "ready" the whole time, and a restart is a fair moment
+// to ask once more. A NEWER version is a different question and still asks.
+let declinedVersion: string | null = null;
 let missingChannelFileWarned = false;
 let stagedZip: StagedZipUpdate | null = null;
 let applyingZip = false;
@@ -381,6 +388,7 @@ async function promptToInstall(version: string): Promise<void> {
     else autoUpdater.quitAndInstall();
   } else {
     installPrompted = false;
+    declinedVersion = version;
   }
 }
 
@@ -447,6 +455,9 @@ export function initAutoUpdater(): void {
   autoUpdater.on('update-available', async (info) => {
     // A user-initiated flow already owns this update; don't race it.
     if (userDriven) return;
+    // Already downloaded and waiting on the user (#275): nothing to fetch, and
+    // re-downloading is what re-fired the install dialog.
+    if (state.phase === 'ready' && state.version === info.version) return;
     try {
       const ageMs = await releaseAgeMs(info.version);
       const minMs = minReleaseAgeMs();
@@ -476,6 +487,8 @@ export function initAutoUpdater(): void {
       percent: 100,
       needsElevation: updateNeedsElevation(),
     });
+    // Asked once per version (#275); the badge is the way back to the install.
+    if (declinedVersion === info.version) return;
     await promptToInstall(info.version);
   });
 
