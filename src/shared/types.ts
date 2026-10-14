@@ -61,6 +61,13 @@ export interface SurfaceRef {
   /** Commands run once after the terminal PTY spawns (quick-launch profiles — issue #32). */
   startupCommands?: string[];
   /**
+   * Extra environment for this terminal's shell (workspace manifests, #284).
+   * Persisted as WRITTEN: a `${env:NAME}` reference stays a reference and is
+   * resolved by PtyManager when the PTY spawns, so a value pulled from wmux's
+   * own environment (a token, say) never lands in session.json.
+   */
+  env?: Record<string, string>;
+  /**
    * Claude Code session this terminal was running when the session was saved
    * (issue #186). Written only into the PERSISTED copy of the tree, by
    * `stampClaudeSessionIds` in the main process — a live surface never carries
@@ -280,6 +287,24 @@ export type ExplorerDiffResult = ExplorerDiffOk | ExplorerListError;
  * normalises that spelling away before the value ever reaches a builder.
  */
 export type WorkspaceLayout = 'grid' | 'columns' | 'rows' | 'left' | 'down';
+
+/** One pane of a workspace manifest, as main hands it to the renderer (#284). */
+export interface ManifestPaneSpec {
+  /** The manifest's pane id; the key main gets a surface id back under. */
+  key: string;
+  title: string;
+  cwd: string;
+  env: Record<string, string>;
+}
+
+/** What main asks a window to build for a workspace manifest (#284). No commands: main types those. */
+export interface ManifestWorkspaceSpec {
+  title: string;
+  cwd: string;
+  layout?: WorkspaceLayout;
+  panes: ManifestPaneSpec[];
+  browser?: { tabs: string[]; active: number };
+}
 
 /**
  * A user-saved pane layout: geometry plus whatever each pane's surface was
@@ -718,6 +743,8 @@ export const IPC_CHANNELS = {
   SESSION_SAVE_NAMED: 'session:save-named',
   SESSION_LOAD_NAMED: 'session:load-named',
   SESSION_LIST_NAMED: 'session:list-named',
+  /** Pick a wmux.workspace.json and open it (#284). Main does all of it. */
+  WORKSPACE_FILE_OPEN: 'workspace-file:open',
   SESSION_DELETE_NAMED: 'session:delete-named',
   // Auto-saved session (the rolling 30s snapshot the main process writes)
   SESSION_LOAD_AUTO: 'session:load-auto',

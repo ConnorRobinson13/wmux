@@ -785,6 +785,20 @@ export class PtyManager {
     return { id, shell, startupCommandsConsumed, reused: false, ...(fellBack ? { shellFallbackFrom: spec.command } : {}) };
   }
 
+  /**
+   * Deliver commands to a shell that is ALREADY running — a workspace manifest
+   * pane whose `after`/`waitFor` held it back (#284). Same readiness gate as a
+   * cold start (#251), so there is still exactly one way wmux types into a
+   * pane. False when there is no live PTY for the surface.
+   */
+  deliverCommands(id: SurfaceId, commands: string[]): boolean {
+    const entry = this.ptys.get(id);
+    if (!entry?.alive) return false;
+    const cmds = commands.filter((cmd) => typeof cmd === 'string' && cmd.trim().length > 0);
+    if (cmds.length > 0) this.typeStartupCommands(id, entry, cmds);
+    return true;
+  }
+
   /** Keystroke delivery for shells with no init seam — see startup-commands.ts. */
   private typeStartupCommands(id: SurfaceId, entry: PtyEntry, commands: string[]): void {
     const cancel = deliverStartupCommandsWhenReady(

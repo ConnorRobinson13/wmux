@@ -134,6 +134,18 @@ export default function CommandPalette({ onClose, onAction }: CommandPaletteProp
       },
     });
 
+    // A project's committed workspace file (#284): main picks the file, shows
+    // the trust prompt and brings the panes up — the renderer only asks.
+    items.push({
+      id: 'command:open-workspace-file',
+      label: t('palette.openWorkspaceFile', 'Open workspace file… (wmux.workspace.json)'),
+      category: t('palette.category.commands'),
+      action: () => {
+        onClose();
+        (window as any).wmux?.workspaceFile?.open?.()?.catch?.(() => {});
+      },
+    });
+
     // Category: Layouts — saved pane arrangements
     items.push({
       id: 'command:save-current-layout',

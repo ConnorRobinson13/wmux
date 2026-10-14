@@ -16,6 +16,8 @@ interface TerminalPaneProps {
   colorScheme?: string;
   /** Quick-launch profile startup commands (issue #32). */
   startupCommands?: string[];
+  /** Extra shell environment — workspace manifest panes (#284). */
+  env?: Record<string, string>;
   /** Claude Code session to resume on a restored pane (issue #186). */
   claudeSessionId?: string;
   /** Exact Codex conversation to resume, independently of Claude. */
@@ -33,6 +35,7 @@ export default function TerminalPane({
   cwd,
   colorScheme,
   startupCommands,
+  env,
   claudeSessionId,
   codexSessionId,
   focused = true,
@@ -41,7 +44,7 @@ export default function TerminalPane({
   onFindBarClose,
   copyModeActive = false,
 }: TerminalPaneProps) {
-  const { terminalRef, searchAddonRef, xtermRef } = useTerminal({ surfaceId, shell, cwd, visible, focused, colorScheme, startupCommands, claudeSessionId, codexSessionId });
+  const { terminalRef, searchAddonRef, xtermRef } = useTerminal({ surfaceId, shell, cwd, visible, focused, colorScheme, startupCommands, env, claudeSessionId, codexSessionId });
 
   const [_lastQuery, setLastQuery] = useState('');
 

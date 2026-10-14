@@ -800,6 +800,86 @@ async function cmdLayout(args) {
     }
     print(await sendV2('layout.grid', params));
 }
+// Workspace manifests (#284). Paths are resolved HERE, against the caller's
+// cwd, so `wmux workspace open` in a repo means that repo. There is no
+// --trust: trust is a native dialog in wmux, which nothing on the pipe can
+// answer — a pane's agent holds the pipe token and must not be able to.
+const WORKSPACE_FILE = 'wmux.workspace.json';
+function printManifestResult(result) {
+    for (const w of result?.warnings ?? [])
+        console.error(`warning: ${w}`);
+    if (result?.ok === false) {
+        for (const e of result.errors ?? [])
+            console.error(`error: ${e}`);
+        process.exit(1);
+    }
+}
+async function cmdWorkspace(args) {
+    const sub = args[1];
+    if (sub === 'list') {
+        print(await sendV2('workspace.list', {}));
+        return;
+    }
+    if (sub === 'save')
+        return workspaceSave(args.slice(2));
+    if (sub !== 'open' && sub !== 'validate')
+        failSubcommand('workspace', sub);
+    // One optional path (a manifest or the folder holding one) BEFORE the flags;
+    // parseFlagArgs refuses bare words anywhere else (#247).
+    const rest = args.slice(2);
+    const pathArg = rest[0] !== undefined && !rest[0].startsWith('--') ? rest.shift() : undefined;
+    const { bools } = flagsOrFail('workspace', rest, { value: [], bool: ['--dry-run', '--new', '--json'] });
+    const target = path_1.default.resolve(process.cwd(), pathArg ?? '.');
+    if (sub === 'validate') {
+        const result = await sendV2('workspace.validate', { path: target });
+        if (bools.has('--json')) {
+            print(result);
+            return;
+        }
+        printManifestResult(result);
+        console.log(`${result.path}: valid\n\n${result.plan}`);
+        return;
+    }
+    // Long timeout: the reply waits on the trust dialog, which waits on a human.
+    const result = await sendV2('workspace.open', { path: target, dryRun: bools.has('--dry-run'), newCopy: bools.has('--new') }, 10 * 60_000);
+    if (bools.has('--json')) {
+        print(result);
+        return;
+    }
+    printManifestResult(result);
+    console.log(describeOpenResult(result));
+}
+function describeOpenResult(result) {
+    if (result.dryRun)
+        return result.plan;
+    if (result.focused)
+        return `Already open — focused it (${result.workspaceId}). Use --new for a second copy.`;
+    if (result.cancelled)
+        return 'Cancelled — nothing was opened.';
+    return result.ranCommands
+        ? `Opened ${result.workspaceId}; commands are starting in order.`
+        : `Opened ${result.workspaceId} without running any command.`;
+}
+async function workspaceSave(rest) {
+    const { values, bools } = flagsOrFail('workspace', rest, { value: ['--to', '--name', '--workspace'], bool: ['--force', '--stdout'] });
+    const toArg = path_1.default.resolve(process.cwd(), values['--to'] ?? '.');
+    const file = toArg.toLowerCase().endsWith('.json') ? toArg : path_1.default.join(toArg, WORKSPACE_FILE);
+    const result = await sendV2('workspace.export', { to: path_1.default.dirname(file), name: values['--name'], workspaceId: values['--workspace'] });
+    for (const w of result.warnings ?? [])
+        console.error(`warning: ${w}`);
+    const text = JSON.stringify(result.manifest, null, 2) + '\n';
+    if (bools.has('--stdout')) {
+        process.stdout.write(text);
+        return;
+    }
+    if (fs_1.default.existsSync(file) && !bools.has('--force')) {
+        console.error(`${file} already exists — pass --force to overwrite it, or --stdout to print instead.`);
+        process.exit(1);
+    }
+    fs_1.default.mkdirSync(path_1.default.dirname(file), { recursive: true });
+    fs_1.default.writeFileSync(file, text, 'utf-8');
+    console.log(`Wrote ${file}. Commit it; anyone opening it is shown every command before anything runs.`);
+}
 async function cmdMarkdown(args) {
     const sub = args[1];
     if (sub === 'set') {
@@ -1832,6 +1912,15 @@ const COMMAND_SPECS = {
         usage: 'wmux remote status [--json]   (is the phone Remote Console on, where, and how many devices)',
         bool: ['--json'],
     },
+    workspace: {
+        usage: 'wmux workspace open [path] [--dry-run] [--new] [--json]   (bring up a wmux.workspace.json; asks before running anything)\n'
+            + 'wmux workspace validate [path] [--json]\n'
+            + 'wmux workspace save [--to <dir|file.json>] [--name N] [--workspace <id>] [--force] [--stdout]\n'
+            + 'wmux workspace list',
+        value: ['--to', '--name', '--workspace'],
+        bool: ['--dry-run', '--new', '--json', '--force', '--stdout'],
+        passthrough: true,
+    },
     // Workspace
     'new-workspace': {
         usage: 'wmux new-workspace [--title T] [--shell S] [--cwd D] [--panes N] [--layout L]\n'
@@ -2101,6 +2190,7 @@ const COMMANDS = {
     bridge: cmdBridge,
     token: cmdToken,
     remote: cmdRemote,
+    workspace: cmdWorkspace,
     // Workspace
     'new-workspace': cmdNewWorkspace,
     ssh: cmdSsh,

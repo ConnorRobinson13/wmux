@@ -231,3 +231,34 @@ html.wmux-transparent #root {
     scroll-behavior: auto !important;
   }
 }
+
+/* Startup command editor (#284) — reuses .confirm-dialog for its frame. */
+.startup-command-dialog__input {
+  display: block;
+  box-sizing: border-box;
+  width: 100%;
+  min-width: 360px;
+  margin: 0 0 14px;
+  padding: 6px 8px;
+  border: 1px solid var(--ui-border);
+  border-radius: 5px;
+  background: var(--ui-bg-0);
+  color: var(--ui-text-primary);
+  font-family: 'Cascadia Mono', Consolas, monospace;
+  font-size: 12px;
+  resize: vertical;
+}
+
+.startup-command-dialog__input:focus {
+  outline: 1px solid var(--ui-accent);
+  outline-offset: 0;
+}
+
+.confirm-dialog__btn--primary {
+  border-color: var(--ui-accent);
+  background: color-mix(in srgb, var(--ui-accent) 20%, transparent);
+}
+
+.confirm-dialog__btn--primary:hover {
+  background: color-mix(in srgb, var(--ui-accent) 35%, transparent);
+}

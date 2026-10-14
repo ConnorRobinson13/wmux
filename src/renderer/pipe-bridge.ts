@@ -5,12 +5,13 @@
 import { useStore } from './store';
 import { splitNode, getAllPaneIds, findLeaf, buildGridLayout, buildAgentLayout, leafFraction, buildWorkspaceTree } from './store/split-utils';
 import { resolveAnchorPane, resolveLayoutSize } from './store/agent-layout-target';
-import { surfaceTerminalRegistry } from './hooks/useTerminal';
+import { surfaceTerminalRegistry, showPaneNotice } from './hooks/useTerminal';
 import { rollupAgents } from './store/agent-rollup';
 import { toRemoteRosterSource } from './utils/remote-roster';
 import { PaneId, SurfaceId, WorkspaceId, SurfaceType, engineOf, type BrowserEngine, type WorkspaceLayout } from '../shared/types';
 import { promptSummary, type PromptEntry, type PromptSource } from './store/prompt-slice';
 import { v4 as uuid } from 'uuid';
+import { buildManifestTree, describeWorkspaceTree, type ManifestWorkspaceSpec } from './store/manifest-tree';
 import { translate, type TranslationKey } from './i18n/core';
 
 /** Non-hook context (bridges the main process to the store) — reads the current language directly. */
@@ -531,6 +532,50 @@ export function initPipeBridge(): void {
       }
     }
     return null;
+  };
+
+  // ─── Workspace manifests (#284) ─────────────────────────────────────────────
+  // Main owns the whole open flow (parse, trust, ordering, typing commands);
+  // these only touch the store. No startupCommands cross this boundary — see
+  // store/manifest-tree.ts for why a manifest pane carries none.
+
+  w.__wmux_openManifestWorkspace = (spec: ManifestWorkspaceSpec) => {
+    const store = useStore.getState();
+    const { tree, surfaces } = buildManifestTree(spec);
+    const id = store.createWorkspace({ title: spec.title, cwd: spec.cwd, splitTree: tree }, bridgeT);
+    useStore.getState().selectWorkspace(id);
+    return { workspaceId: id, surfaces };
+  };
+
+  /** Focus a workspace a manifest opened earlier; false once it is gone. */
+  w.__wmux_focusWorkspaceIfOpen = (id: string) => {
+    const store = useStore.getState();
+    if (!store.workspaces.some((ws) => ws.id === id)) return false;
+    store.selectWorkspace(id as WorkspaceId);
+    return true;
+  };
+
+  /**
+   * A visible `[wmux] …` line in a terminal — a manifest pane waiting on a
+   * dependency, or one whose wait timed out. Written to xterm, never to the
+   * PTY: it is wmux talking, not input. False when this window has no such
+   * terminal, so main can ask every window.
+   */
+  w.__wmux_paneNotice = (surfaceId: string, text: string) => {
+    if (!w.__wmux_locateSurface(surfaceId)) return false;
+    showPaneNotice(surfaceId, String(text).slice(0, 500));
+    return true;
+  };
+
+  /** The caller's workspace as `wmux workspace save` writes it; null if not here. */
+  w.__wmux_describeWorkspace = (params: { caller?: string; workspaceId?: string }) => {
+    const store = useStore.getState();
+    const located = params?.caller ? w.__wmux_locateSurface(params.caller) : null;
+    const wsId = params?.workspaceId ?? located?.workspaceId;
+    const ws = store.workspaces.find((x) => x.id === wsId);
+    if (!ws) return null;
+    const described = describeWorkspaceTree(ws.splitTree, (pid) => findLeaf(ws.splitTree, pid as PaneId) ?? null);
+    return { title: ws.title, cwd: ws.cwd, ...described };
   };
 
   w.__wmux_getActiveSurfaceId = () => {

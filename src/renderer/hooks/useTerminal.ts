@@ -68,6 +68,8 @@ interface UseTerminalOptions {
   colorScheme?: string;
   /** Quick-launch profile commands, run once after the PTY is first created (issue #32). */
   startupCommands?: string[];
+  /** Extra shell environment (manifest panes, #284); `${env:NAME}` is resolved in main. */
+  env?: Record<string, string>;
   /**
    * Claude Code session this surface was running when the session was saved
    * (issue #186). Only present on a restored tree, only honoured when
@@ -332,6 +334,30 @@ const MAX_BUFFER_CACHE = 32;
 // registered on mount and removed on unmount (guarded so a StrictMode
 // setup→cleanup→setup sequence can't delete the replacement instance).
 export const surfaceTerminalRegistry = new Map<string, Terminal>();
+
+/** Notices for a terminal that has not mounted yet (#284) — drained on mount. */
+const pendingPaneNotices = new Map<string, string[]>();
+
+function writePaneNotice(term: Terminal, text: string): void {
+  term.writeln(`\r\n\x1b[33m[wmux] ${text}\x1b[0m`);
+}
+
+/**
+ * Show a `[wmux] …` line in a terminal — a workspace-manifest pane held back
+ * by `after`/`waitFor`, or one whose wait gave up (#284). Written to xterm,
+ * never to the PTY: it is wmux talking, not input. Parked until the pane
+ * mounts when it arrives first, which it can: the workspace is a frame old.
+ */
+export function showPaneNotice(surfaceId: string, text: string): void {
+  const term = surfaceTerminalRegistry.get(surfaceId);
+  if (term) {
+    writePaneNotice(term, text);
+    return;
+  }
+  const queue = pendingPaneNotices.get(surfaceId) ?? [];
+  if (queue.length < 20) queue.push(text);
+  pendingPaneNotices.set(surfaceId, queue);
+}
 
 /**
  * surfaceId → the SerializeAddon already loaded into that surface's terminal
@@ -742,7 +768,7 @@ export async function fetchTheme(name: string): Promise<ThemeConfig> {
   }
 }
 
-export function useTerminal({ surfaceId, shell, cwd, visible = true, focused = true, colorScheme, startupCommands, claudeSessionId, codexSessionId }: UseTerminalOptions = {}): UseTerminalResult {
+export function useTerminal({ surfaceId, shell, cwd, visible = true, focused = true, colorScheme, startupCommands, env, claudeSessionId, codexSessionId }: UseTerminalOptions = {}): UseTerminalResult {
   const t = useT();
   const terminalRef = useRef<HTMLDivElement | null>(null);
   const xtermRef = useRef<Terminal | null>(null);
@@ -772,6 +798,9 @@ export function useTerminal({ surfaceId, shell, cwd, visible = true, focused = t
   // startup commands without listing them as a dependency.
   const startupCommandsRef = useRef<string[] | undefined>(startupCommands);
   startupCommandsRef.current = startupCommands;
+  // Read at spawn only, like the commands: a later edit applies to the next PTY.
+  const envRef = useRef<Record<string, string> | undefined>(env);
+  envRef.current = env;
   const claudeSessionIdRef = useRef<string | undefined>(claudeSessionId);
   claudeSessionIdRef.current = claudeSessionId;
   const codexSessionIdRef = useRef<string | undefined>(codexSessionId);
@@ -1605,7 +1634,7 @@ export function useTerminal({ surfaceId, shell, cwd, visible = true, focused = t
             codexSessionId: codexSessionIdRef.current,
             codexEnabled: useStore.getState().workspacePrefs.restoreCodexSessions,
           });
-          window.wmux.pty.create({ shell: effectiveShell, cwd: effectiveCwd, env: {}, surfaceId, startupCommands: spawnCommands, cols: initialCols, rows: initialRows })
+          window.wmux.pty.create({ shell: effectiveShell, cwd: effectiveCwd, env: envRef.current ?? {}, surfaceId, startupCommands: spawnCommands, cols: initialCols, rows: initialRows })
             .then((created: { id: string; shell: string; shellFallbackFrom?: string }) => {
               // PTY persists (keep-alive); a remount re-attaches via pty.has.
               if (disposed) return;
@@ -1618,7 +1647,7 @@ export function useTerminal({ surfaceId, shell, cwd, visible = true, focused = t
       });
     } else {
       // No surfaceId hint — always create new PTY
-      window.wmux.pty.create({ shell: effectiveShell, cwd: effectiveCwd, env: {}, startupCommands: startupCommandsRef.current, cols: initialCols, rows: initialRows })
+      window.wmux.pty.create({ shell: effectiveShell, cwd: effectiveCwd, env: envRef.current ?? {}, startupCommands: startupCommandsRef.current, cols: initialCols, rows: initialRows })
         .then((created: { id: string; shell: string; shellFallbackFrom?: string }) => {
           if (disposed) return;
           setResolvedShellForSurface(surfaceId, created.shell);
@@ -1810,6 +1839,16 @@ export function useTerminal({ surfaceId, shell, cwd, visible = true, focused = t
     };
     document.addEventListener('wmux:reset-terminal', handler);
     return () => document.removeEventListener('wmux:reset-terminal', handler);
+  }, [surfaceId]);
+
+  // `[wmux] …` notices from a workspace manifest (#284): a pane held back by
+  // `after`/`waitFor`, or one whose wait gave up. Written to xterm, never the
+  // PTY. A notice can beat the pane's first mount (the workspace was created a
+  // frame ago), so it is parked per surface and drained once xterm exists.
+  useEffect(() => {
+    if (!surfaceId || !xtermRef.current) return;
+    for (const text of pendingPaneNotices.get(surfaceId) ?? []) writePaneNotice(xtermRef.current, text);
+    pendingPaneNotices.delete(surfaceId);
   }, [surfaceId]);
 
   // Re-apply prompt highlights when their preferences change (issue #207).

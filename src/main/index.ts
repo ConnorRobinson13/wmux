@@ -38,6 +38,7 @@ import { CDPProxy } from './cdp-proxy';
 import { IPC_CHANNELS, SurfaceId, BrowserEngine, PaneId, WorkspaceId } from '../shared/types';
 import { getPipePath, getAppDataDir, ensurePipeToken, getAppUserModelId } from '../shared/instance';
 import { resolveUserDataDir } from './chromium-profile';
+import { WORKSPACE_MANIFEST_METHODS, handleWorkspaceManifestV2, pickAndOpenManifest, type ManifestHostDeps } from './workspace-manifest-v2';
 import {
   loadSession,
   saveSession,
@@ -289,6 +290,13 @@ function handleBrowserEngineV2(
 // Route the V2 methods that live in their own modules: browser.* (per-caller
 // isolated routing, issue #62) and the uniform renderer-bridge methods. Returns
 // true when the method was handled here so the main switch can be skipped.
+// What workspace manifests (#284) need from main: the one typed-delivery path
+// into a live PTY (#251), and main.log.
+const manifestHost: ManifestHostDeps = {
+  deliver: (surfaceId, commands) => !isQuitting && ptyManager.deliverCommands(surfaceId as SurfaceId, commands),
+  log: (event, fields) => logDiagnostic(event, fields),
+};
+
 function routeSpecialV2(
   request: { method: string; params?: any },
   respond: (result: any) => void,
@@ -298,6 +306,12 @@ function routeSpecialV2(
   // match rather than a prefix: pairing, enabling and revoking deliberately
   // have no pipe method, so no other name may ever route there.
   if (request.method === 'remote.status') { handleRemoteConsoleV2(request.method, request.params, respond, respondError); return true; }
+  // Workspace manifests (#284). Exact names, matched before the bridge table
+  // that owns the other workspace.* methods. None of them can grant trust.
+  if (WORKSPACE_MANIFEST_METHODS.has(request.method)) {
+    handleWorkspaceManifestV2(request.method, request.params, respond, respondError, manifestHost);
+    return true;
+  }
   // get_engine/set_engine must be caught BEFORE the generic browser.*
   // delegation just below, or they fall into handleBrowserV2's verb switch
   // and are rejected as `Unknown: browser.get_engine` (-32601).
@@ -1547,6 +1561,10 @@ app.whenReady().then(() => {
 
   // Late-mounted windows query the cached latest update info so the badge
   // appears even if the GitHub poll fired before the window's renderer attached.
+  ipcMain.handle(IPC_CHANNELS.WORKSPACE_FILE_OPEN, (event) =>
+    pickAndOpenManifest(BrowserWindow.fromWebContents(event.sender), manifestHost).catch((err: unknown) => {
+      logDiagnostic('workspace-manifest-open-failed', { message: err instanceof Error ? err.message : String(err) });
+    }));
   ipcMain.handle(IPC_CHANNELS.UPDATE_GET_LATEST, () => getLatestUpdate());
   // Release notes for the Changelog tab (issue #211). Takes only a refresh
   // flag — no repo, no URL, no token: the renderer names nothing about where

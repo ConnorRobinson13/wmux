@@ -192,6 +192,35 @@ describe('PtyManager', { timeout: 60_000 }, () => {
     expect(printed.split('STARTUP_1_RAN').length - 1).toBe(1);
   });
 
+  // #284: a workspace-manifest pane held back by `after`/`waitFor` gets its
+  // commands LATER, into a shell that is already sitting at its prompt —
+  // through the same gated delivery as a cold start, exactly once.
+  it('deliverCommands types into an already-running shell, once', async () => {
+    const manager = makeManager();
+    const { id } = manager.create({ shell: TEST_SHELL, cwd: process.env.USERPROFILE || 'C:\\', env: { ...TEST_ENV, MANIFEST_PORT: '4000' } });
+    let out = '';
+    const unsub = manager.onData(id, (d) => { out += d; });
+    await firstData(manager, id);
+    await new Promise((r) => setTimeout(r, 1500)); // well past the first prompt
+    expect(manager.deliverCommands(id, ['echo LATER_%MANIFEST_PORT%_RAN'])).toBe(true);
+    const deadline = Date.now() + 15_000;
+    while (!out.includes('LATER_4000_RAN') && Date.now() < deadline) {
+      await new Promise((r) => setTimeout(r, 100));
+    }
+    await new Promise((r) => setTimeout(r, 1000));
+    unsub();
+    const ESC = String.fromCharCode(0x1b);
+    const BEL = String.fromCharCode(0x07);
+    const printed = out.replace(new RegExp(String.raw`${ESC}\][^${BEL}${ESC}]*(?:${BEL}|${ESC}\\)`, 'g'), '');
+    // Expanded, so it ran; and the surface's env reached the shell.
+    expect(printed.split('LATER_4000_RAN').length - 1).toBe(1);
+  });
+
+  it('deliverCommands refuses a surface with no PTY rather than queueing into nothing', () => {
+    const manager = makeManager();
+    expect(manager.deliverCommands('surf-nope' as SurfaceId, ['echo x'])).toBe(false);
+  });
+
   it('reports the requested shell when it fell back to the default (#252)', () => {
     const manager = makeManager();
     const created = manager.create({

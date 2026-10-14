@@ -70,6 +70,7 @@ import {
   sessionRegistry,
 } from './agent-browser-runtime';
 import type { AgentSession } from './agent-browser-session';
+import { resolveSurfaceEnv } from './surface-env';
 
 // Claimed at module load, before anything can spawn a PTY, so the candidate
 // list is strictly what a PREVIOUS instance left behind (issue #139). The
@@ -556,6 +557,9 @@ export function registerIpcHandlers(windowManager: WindowManager, cdpProxyInstan
       const resolvedOptions = {
         ...options,
         cwd: options.cwd || process.env.USERPROFILE || 'C:\\',
+        // A renderer's env is a surface's (#284): valid keys only, never a
+        // WMUX_* identity key, `${env:NAME}` resolved here and only here.
+        env: resolveSurfaceEnv(options?.env, process.env),
       };
       const created = ptyManager.create(resolvedOptions);
       const id = created.id;

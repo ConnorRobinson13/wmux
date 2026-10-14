@@ -10,6 +10,7 @@ import type { SurfaceDragPayload, SurfaceDragPreviewTarget } from './drag-previe
 import { parseSurfaceDragData } from './surface-drag-preview';
 import { getSurfaceLabel } from './surface-label';
 import { useOscTitleLookup } from './use-osc-title';
+import StartupCommandDialog from './StartupCommandDialog';
 
 interface SurfaceTabBarProps {
   paneId: PaneId;
@@ -95,6 +96,8 @@ export default function SurfaceTabBar({
   const [renameValue, setRenameValue] = useState('');
   // Right-click tab context menu (Rename / Close / Close others).
   const [ctxMenu, setCtxMenu] = useState<{ surfaceId: SurfaceId; x: number; y: number } | null>(null);
+  // The surface whose startup commands are being edited (#284), if any.
+  const [startupFor, setStartupFor] = useState<SurfaceId | null>(null);
   const ctxMenuRef = useRef<HTMLDivElement>(null);
   // Which control-cluster dropdown is open, and where to anchor it (issue #34).
   // Menus render through a portal to document.body so the tab bar's
@@ -600,6 +603,15 @@ export default function SurfaceTabBar({
           >
             {t('surfaceTab.rename', 'Rename')}
           </div>
+          {surfaces.find((s) => s.id === ctxMenu.surfaceId)?.type === 'terminal' && (
+            <div
+              className="ctx-menu__item"
+              role="menuitem"
+              onClick={() => { setStartupFor(ctxMenu.surfaceId); setCtxMenu(null); }}
+            >
+              {t('surfaceTab.startupCommand', 'Startup command…')}
+            </div>
+          )}
           <div className="ctx-menu__separator" />
           <div
             className="ctx-menu__item ctx-menu__item--danger"
@@ -629,6 +641,7 @@ export default function SurfaceTabBar({
         </div>,
         document.body,
       )}
+      {startupFor && <StartupCommandDialog surfaceId={startupFor} onClose={() => setStartupFor(null)} />}
     </div>
   );
 }

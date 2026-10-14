@@ -339,6 +339,11 @@ contextBridge.exposeInMainWorld('wmux', {
       return () => ipcRenderer.removeListener(IPC_CHANNELS.ORCHESTRATION_CLEAR, handler);
     },
   },
+  // Workspace manifests (#284): takes nothing — the path comes from a native
+  // picker in main, so a renderer cannot point it at a file of its choosing.
+  workspaceFile: {
+    open: () => ipcRenderer.invoke(IPC_CHANNELS.WORKSPACE_FILE_OPEN),
+  },
   session: {
     save: (session: any) => ipcRenderer.invoke(IPC_CHANNELS.SESSION_SAVE_NAMED, session),
     load: (name: string) => ipcRenderer.invoke(IPC_CHANNELS.SESSION_LOAD_NAMED, name),
