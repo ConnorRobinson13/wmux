@@ -13,7 +13,7 @@ import type { Translator } from '../i18n/core';
 import { collectActiveTerminalSurfaceIds } from '../store/split-utils';
 import { SplitNode, SurfaceId, ThemeConfig, type InsertionResult } from '../../shared/types';
 import { UserColorScheme } from '../store/settings-slice';
-import { normalizeOscTitle } from '../store/osc-title-slice';
+import { normalizeOscTitle, isConsoleDefaultTitle } from '../store/osc-title-slice';
 import { terminalBgAlpha } from '../store/backdrop';
 import { createTerminalLinkActivation } from '../utils/terminal-links';
 import {
@@ -444,7 +444,10 @@ function publishTitle(surfaceId: string): void {
   if (titleFlushTimers.has(surfaceId)) return;
   titleFlushTimers.set(surfaceId, setTimeout(() => {
     titleFlushTimers.delete(surfaceId);
-    useStore.getState().setOscTitle(surfaceId, surfaceTitle.get(surfaceId) ?? '');
+    const title = surfaceTitle.get(surfaceId) ?? '';
+    // A console's DEFAULT title (its exe path, #286) is no label: publish it as
+    // "no title" so the tab keeps its cwd. Detection still sees the raw value.
+    useStore.getState().setOscTitle(surfaceId, isConsoleDefaultTitle(title) ? '' : title);
   }, OSC_TITLE_STORE_THROTTLE_MS));
 }
 

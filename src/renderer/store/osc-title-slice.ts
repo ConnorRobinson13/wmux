@@ -90,6 +90,30 @@ export function normalizeOscTitle(raw: unknown): string {
 }
 
 /**
+ * Is this the title Windows gives a console by DEFAULT, rather than one a
+ * program chose (issue #286)?
+ *
+ * A Windows console starts out titled with the full path of the executable it
+ * was launched from, and an elevated one prefixes that with a LOCALISED
+ * "Administrator: " ("Administrateur : ", "管理员: " …). ConPTY forwards that
+ * title as OSC 0 like any other, so with #221's title-as-tab-label every pwsh
+ * pane in an elevated wmux was captioned
+ * `Administrator: C:\Program Files\WindowsApps\Microsoft.PowerShell_…\pwsh.exe`
+ * — and each tab first showed its folder, then "reverted" to that the moment
+ * the shell's title arrived. It names no program activity, only the binary, so
+ * it must not outrank the cwd label: treat it as "no title".
+ *
+ * Narrow on purpose: only an absolute Windows path (or a bare file name) ending
+ * in an executable extension, behind at most one short "<word(s)>:" prefix. A
+ * title a program actually sets — "✳ Claude Code", "vim README.md",
+ * Git Bash's "MINGW64:/c/repo" — never looks like that.
+ */
+export function isConsoleDefaultTitle(title: string): boolean {
+  const rest = title.replace(/^[^:\\/]{1,40}:\s*(?=[A-Za-z]:\\|\\\\)/, '');
+  return /^(?:[a-z]:\\|\\\\)?[^"*?<>|:/]*\.(?:exe|com|cmd|bat)$/i.test(rest);
+}
+
+/**
  * Drop the least recently written surfaces once the map is over budget.
  *
  * Returns the input untouched when it fits, so the common path allocates
