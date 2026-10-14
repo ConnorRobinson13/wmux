@@ -183,6 +183,8 @@ interface WindowEntry {
   closePending: boolean;
   /** The user answered that dialog with "close"; the re-issued close goes through. */
   closeConfirmed: boolean;
+  /** The pre-close session flush (#285) ran; the re-issued close goes through. */
+  sessionFlushed: boolean;
 }
 
 /**
@@ -209,6 +211,13 @@ export class WindowManager {
    * back on the next launch, because the merged save still carries its state.
    */
   onWindowClosed: ((id: WindowId, webContentsId: number) => void) | null = null;
+
+  /**
+   * Asked once per close that is going to happen (issue #285): return a promise
+   * to hold the close until it settles — index.ts uses it to pull the window's
+   * state into session.json before the renderer dies — or null to close now.
+   */
+  beforeClose: ((win: BrowserWindow, isLastWindow: boolean) => Promise<unknown> | null) | null = null;
 
   createWindow(
     bounds?: { x: number; y: number; width: number; height: number },
@@ -296,7 +305,7 @@ export class WindowManager {
       this.onWindowClosed?.(id, webContentsId);
     });
 
-    const entry: WindowEntry = { id, window: win, transparent, closePending: false, closeConfirmed: false };
+    const entry: WindowEntry = { id, window: win, transparent, closePending: false, closeConfirmed: false, sessionFlushed: false };
     // Every route to a window close lands here — the caption ×, Alt+F4, the
     // renderer's closeWindow shortcut (`window.close()`), the frameless
     // caption's closeSelf — so this is the one place the guard can sit.
@@ -321,7 +330,10 @@ export class WindowManager {
       confirmed: entry.closeConfirmed,
       pending: entry.closePending,
     });
-    if (decision === 'allow') return;
+    if (decision === 'allow') {
+      this.flushBeforeClose(entry, event);
+      return;
+    }
     event.preventDefault();
     if (decision === 'swallow') return;
 
@@ -347,6 +359,25 @@ export class WindowManager {
     }, () => {
       entry.closePending = false;
     });
+  }
+
+  /**
+   * The close is going ahead — but the renderer is about to die with whatever
+   * changed since the last auto-save tick (#285). Hold it once, let
+   * `beforeClose` collect the state, then re-issue. `sessionFlushed` is what
+   * lets the second pass through, and is set before the wait so a second ×
+   * click during it cannot start another round.
+   */
+  private flushBeforeClose(entry: WindowEntry, event: Electron.Event): void {
+    if (entry.sessionFlushed || !this.beforeClose) return;
+    const pending = this.beforeClose(entry.window, this.getAllWindows().length <= 1);
+    if (!pending) return;
+    event.preventDefault();
+    entry.sessionFlushed = true;
+    const proceed = () => {
+      if (!entry.window.isDestroyed()) entry.window.close();
+    };
+    pending.then(proceed, proceed);
   }
 
   /**

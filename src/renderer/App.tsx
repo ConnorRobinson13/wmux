@@ -53,6 +53,7 @@ import { forgetSurface as forgetPromptLog, recordAgentPrompt } from './utils/pro
 import { SURFACE_CLOSED_EVENT } from './store/pty-teardown';
 import { installRemoteRendererHandler } from './utils/remote-snapshot';
 import { formatRemoteNotice } from './utils/remote-notice';
+import { SESSION_SAVE_NOW_EVENT } from './utils/session-save-now';
 import { followOutputFor, togglePinnedPromptFor, togglePromptOutlineFor } from './store/prompt-actions';
 import { useT } from './i18n';
 import type { TranslationKey } from './i18n';
@@ -1114,7 +1115,7 @@ export default function App() {
   // Respond to main process auto-save requests (30s timer + on quit)
   useEffect(() => {
     if (!window.wmux?.session?.onAutoSaveRequest) return;
-    const unsub = window.wmux.session.onAutoSaveRequest(() => {
+    const pushNow = () => {
       const state = useStore.getState();
       const data = {
         version: 1,
@@ -1147,8 +1148,15 @@ export default function App() {
         }],
       };
       window.wmux.session.pushAutoSave(data);
-    });
-    return unsub;
+    };
+    const unsub = window.wmux.session.onAutoSaveRequest(pushNow);
+    // An edit the user made on purpose — a startup command (#285) — is written
+    // now rather than on the next 30 s tick, so not even a crash can lose it.
+    window.addEventListener(SESSION_SAVE_NOW_EVENT, pushNow);
+    return () => {
+      unsub();
+      window.removeEventListener(SESSION_SAVE_NOW_EVENT, pushNow);
+    };
   }, []);
 
   // Auto-focus first pane whenever the active workspace changes or gains its first pane

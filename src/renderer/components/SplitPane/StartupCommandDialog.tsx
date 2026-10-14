@@ -3,6 +3,7 @@ import { createPortal } from 'react-dom';
 import { useStore } from '../../store';
 import { getAllPaneIds, findLeaf } from '../../store/split-utils';
 import { useT } from '../../i18n';
+import { requestSessionSaveNow } from '../../utils/session-save-now';
 import type { PaneId, SurfaceId, WorkspaceId } from '../../../shared/types';
 
 /**
@@ -37,6 +38,9 @@ export default function StartupCommandDialog({ surfaceId, onClose }: { surfaceId
   const save = () => {
     const commands = text.split(/\r?\n/).map((l) => l.trim()).filter(Boolean);
     updateSurface(located.workspaceId, located.paneId, surfaceId, { startupCommands: commands.length ? commands : undefined });
+    // Straight to disk (#285): a startup command only matters after a restart,
+    // so the 30 s auto-save tick is the one place it must not wait.
+    requestSessionSaveNow();
     onClose();
   };
 

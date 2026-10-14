@@ -50,6 +50,7 @@ import {
   shouldSnapshot,
   writeSessionSnapshot,
 } from './session-persistence';
+import { SessionFlushWaiters } from './session-flush';
 import { stampAgentSessionIds } from './agent-session-persistence';
 import { noteIconRevision } from './icon-cache';
 import { installGpuWatchdog } from './gpu-watchdog';
@@ -532,6 +533,18 @@ let autoSaveTimer: ReturnType<typeof setTimeout> | null = null;
 // "forget windows that no longer exist" would erase the whole file (issue #118).
 let isQuitting = false;
 const AUTO_SAVE_INTERVAL_MS = 30_000;
+// Closes and quits that wait for a window's last `session:save` (issue #285).
+const sessionFlush = new SessionFlushWaiters();
+// before-quit's own flush has run; the re-issued quit goes straight through.
+let quitFlushDone = false;
+
+/** Ask one window for its state and resolve once it is on disk (or timed out). */
+function flushSessionFrom(win: BrowserWindow): Promise<boolean> {
+  if (win.isDestroyed()) return Promise.resolve(false);
+  const saved = sessionFlush.wait(win.webContents.id);
+  win.webContents.send('session:request');
+  return saved;
+}
 
 // ─── Scheduled layout snapshots (issue #238) ─────────────────────────────────
 //
@@ -1414,7 +1427,8 @@ app.whenReady().then(() => {
       saveSession(lone);
       maybeSnapshotSession(lone);
     }
-    scheduleAutoSave();
+    sessionFlush.notifySaved(event.sender.id);
+    if (!isQuitting) scheduleAutoSave();
   });
 
   registerIpcHandlers(windowManager, cdpProxy);
@@ -2232,19 +2246,25 @@ app.whenReady().then(() => {
   });
 });
 
-app.on('before-quit', () => {
+app.on('before-quit', (event) => {
   isQuitting = true;
   // Cancel pending auto-save timer
   if (autoSaveTimer !== null) {
     clearTimeout(autoSaveTimer);
     autoSaveTimer = null;
   }
-  // Ask all renderers to push their current state synchronously before quit
-  BrowserWindow.getAllWindows().forEach(win => {
-    if (!win.isDestroyed()) {
-      win.webContents.send('session:request');
-    }
-  });
+  // Pull every window's state onto disk BEFORE Electron starts closing them
+  // (issue #285). This used to be a fire-and-forget broadcast, which raced the
+  // windows' own teardown — and when quit came from closing the last window
+  // there was nobody left to answer it at all. Held once, bounded by
+  // SESSION_FLUSH_TIMEOUT_MS, then the quit is re-issued. Never when Windows is
+  // ending the session: the OS is on a deadline and owes us nothing.
+  if (quitFlushDone || sessionEndHandled) return;
+  const wins = BrowserWindow.getAllWindows().filter((w) => !w.isDestroyed());
+  quitFlushDone = true;
+  if (wins.length === 0) return;
+  event.preventDefault();
+  void Promise.all(wins.map(flushSessionFrom)).then(() => app.quit());
 });
 
 // Windows is ending the session — logoff, shutdown, or a Windows Update
@@ -2276,6 +2296,14 @@ let sessionEndHandled = false;
 // read per × click is nothing. Bypassed whenever the app is quitting on its own
 // account — an update installing, a relaunch, Windows ending the session —
 // because a modal there blocks an update or a shutdown.
+// The last window is about to close (issue #285): hold it until its renderer
+// has handed over its state. A non-last window is forgotten on close anyway
+// (onWindowClosed), and during a quit before-quit has already flushed.
+windowManager.beforeClose = (win, isLastWindow) => {
+  if (!isLastWindow || isQuitting || sessionEndHandled) return null;
+  return flushSessionFrom(win);
+};
+
 windowManager.closeGuard = {
   enabled: () => {
     try {
