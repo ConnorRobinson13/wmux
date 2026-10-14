@@ -11,6 +11,7 @@ import UnreadBadge from './UnreadBadge';
 import PrStatusIcon from './PrStatusIcon';
 import { traceState, toolChannel } from './trace-signals';
 import { resolveStatusText, statusClassFor, stateDotClassFor, backgroundShellsText, type StatusTextInputs, type T } from './workspace-status';
+import { buildContextLine, sidebarDetails } from './context-line';
 
 /** Stable empty view — avoids allocating a fresh object every collapsed tick. */
 const EMPTY_AGENTS_VIEW: WorkspaceAgentsView = { lines: [], total: 0, running: 0, shells: 0 };
@@ -147,6 +148,10 @@ export default function WorkspaceRow({
   // fill regardless of the preference.
   const activeTabIndicator = useStore((state) => state.sidebarPrefs.activeTabIndicator);
   const uiMode = useStore((state) => state.appearancePrefs.uiMode);
+  // Settings → Sidebar's detail toggles, applied in ONE place (#279) — they
+  // were persisted and shown for years while the row read none of them.
+  const sidebarPrefs = useStore((state) => state.sidebarPrefs);
+  const details = useMemo(() => sidebarDetails(sidebarPrefs), [sidebarPrefs]);
 
   // Select only THIS workspace's progress entries, shallow-compared. The slice
   // replaces the whole surfaceProgress object on any accepted update, so a bare
@@ -360,8 +365,8 @@ export default function WorkspaceRow({
     currentToolLabel,
     claudeIsIdle,
     shellState: workspace.shellState,
-    notificationText: workspace.notificationText,
-  }), [workspace.statusOverride, agentCounts, runningAgentCount, wsAgents, sessions, workingSessions, blockedSessions, currentToolLabel, claudeIsIdle, workspace.shellState, workspace.notificationText]);
+    notificationText: details.notificationMessage ? workspace.notificationText : undefined,
+  }), [workspace.statusOverride, agentCounts, runningAgentCount, wsAgents, sessions, workingSessions, blockedSessions, currentToolLabel, claudeIsIdle, workspace.shellState, workspace.notificationText, details.notificationMessage]);
 
   // ── Status text: manual override > tool activity > shell state > default ──
   const statusText = useMemo(() => resolveStatusText(statusInputs, t), [statusInputs, t]);
@@ -369,21 +374,11 @@ export default function WorkspaceRow({
   // ── Status color class ──
   const statusClass = useMemo(() => statusClassFor(statusInputs), [statusInputs]);
 
-  // ── Context line: "branch* · ~/path/to/dir" ──
-  const contextLine = useMemo(() => {
-    const parts: string[] = [];
-    if (workspace.gitBranch) {
-      parts.push(`${workspace.gitBranch}${workspace.gitDirty ? '*' : ''}`);
-    }
-    if (workspace.cwd) {
-      const shortCwd = workspace.cwd
-        .replace(/\\/g, '/')
-        .replace(/^[A-Z]:\//i, '~/')
-        .replace(/\/Users\/[^/]+/i, '~');
-      parts.push(shortCwd);
-    }
-    return parts.length > 0 ? parts.join(' · ') : null;
-  }, [workspace.gitBranch, workspace.gitDirty, workspace.cwd]);
+  // ── Context line: "branch* · ~/path/to/dir · :3000" (see ./context-line) ──
+  const contextLine = useMemo(
+    () => buildContextLine(workspace, details, window.wmux?.system?.homeDir),
+    [workspace.gitBranch, workspace.gitDirty, workspace.cwd, workspace.ports, details],
+  );
 
   const stateDotClass = stateDotClassFor(statusInputs, isClaudeActive);
 
@@ -615,7 +610,7 @@ export default function WorkspaceRow({
       )}
 
       {/* PR info */}
-      {workspace.prNumber != null && (
+      {details.pr && workspace.prNumber != null && (
         <div className="workspace-row__pr">
           {workspace.prStatus != null && (
             <PrStatusIcon status={workspace.prStatus} size={12} />

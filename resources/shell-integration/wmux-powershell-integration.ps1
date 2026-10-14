@@ -332,10 +332,22 @@ try {
 # read: the runspace sees none of this session's functions, so the two it
 # needs travel across as text, and whatever Send-WmuxMessage is by the time
 # the first prompt fires is the one that goes.
+#
+# Nor does it see this session's VARIABLES (#279). A runspace has a session
+# state of its own, so `$global:` inside it is the runspace's global scope,
+# not the shell's — and Send-WmuxMessage connects to `$global:_wmux_pipe_name`.
+# Copied across as text without it, every report the worker made opened a pipe
+# named $null, threw, and was swallowed by Send-WmuxMessage's catch: from 2.9.0
+# the branch only ever showed what the FIRST prompt saw (that one runs
+# synchronously, before the runspace has opened) and never followed a `cd`.
+# The pipe name travels as an argument, the way the PR job is handed it. The
+# token needs no such help: `$env:` is the process environment, which every
+# runspace shares.
 function Get-WmuxGitWorkerScript {
     if (-not $global:_wmux_git_worker) {
         $global:_wmux_git_worker = @"
-param(`$shared, `$git, `$surfaceId)
+param(`$shared, `$git, `$surfaceId, `$pipeName)
+`$global:_wmux_pipe_name = `$pipeName
 function Send-WmuxMessage {
 $(${function:Send-WmuxMessage})
 }
@@ -405,7 +417,7 @@ function Request-WmuxGitReport {
     try {
         $ps = [powershell]::Create()
         $ps.Runspace = $rs
-        $null = $ps.AddScript((Get-WmuxGitWorkerScript)).AddArgument($shared).AddArgument($global:_wmux_git).AddArgument($env:WMUX_SURFACE_ID)
+        $null = $ps.AddScript((Get-WmuxGitWorkerScript)).AddArgument($shared).AddArgument($global:_wmux_git).AddArgument($env:WMUX_SURFACE_ID).AddArgument($global:_wmux_pipe_name)
         $global:_wmux_git_handle = $ps.BeginInvoke()
         $global:_wmux_git_ps = $ps
         return $true

@@ -113,6 +113,82 @@ describe.skipIf(!host)('Get-WmuxGitBranchMessage — one git spawn, the old wire
 });
 
 // ---------------------------------------------------------------------------
+// PowerShell — the worker actually reaches the pipe (#279)
+// ---------------------------------------------------------------------------
+
+/**
+ * Everything above tests what the worker would SAY. This tests that it is
+ * heard. The worker runs in its own runspace, and a runspace has a session
+ * state of its own — `$global:_wmux_pipe_name`, which Send-WmuxMessage
+ * connects to, did not exist there, so from 2.9.0 every worker report opened
+ * a pipe named $null and was swallowed by the catch. Only the first prompt
+ * (synchronous, before the runspace opens) ever reached wmux, so the sidebar
+ * showed the branch a pane STARTED in and never followed a `cd`.
+ *
+ * So: a real named pipe, the real script dot-sourced, the worker path forced
+ * (the runspace waited open, `Request-WmuxGitReport` required to take the
+ * cwd), and the report required to arrive.
+ */
+async function workerReports(shell: string, cwd: string): Promise<{ taken: string; messages: string[] }> {
+  const net = await import('net');
+  const { spawn } = await import('child_process');
+  const instance = `gitworker${process.pid}-${process.hrtime.bigint()}`;
+  const messages: string[] = [];
+  const server = net.createServer((socket) => {
+    let buf = '';
+    socket.on('data', (d) => { buf += d.toString(); });
+    socket.on('end', () => { messages.push(buf.trim()); });
+    socket.on('error', () => {});
+  });
+  await new Promise<void>((resolve) => server.listen(`\\\\.\\pipe\\wmux-${instance}`, resolve));
+  const ps = (s: string) => `'${s.replace(/'/g, "''")}'`;
+  const script = [
+    `. ${ps(PS1)}`,
+    // OpenAsync: wait for it, so the request below can only go to the worker.
+    `$deadline = [DateTime]::UtcNow.AddSeconds(10)`,
+    `while ($global:_wmux_git_runspace.RunspaceStateInfo.State -ne 'Opened' -and [DateTime]::UtcNow -lt $deadline) { Start-Sleep -Milliseconds 20 }`,
+    `Set-Location -LiteralPath ${ps(cwd)}`,
+    `$taken = Request-WmuxGitReport -Cwd $ExecutionContext.SessionState.Path.CurrentFileSystemLocation.ProviderPath`,
+    `[Console]::Out.Write("taken=$taken")`,
+    `$deadline = [DateTime]::UtcNow.AddSeconds(10)`,
+    `while ($global:_wmux_git_shared.running -and [DateTime]::UtcNow -lt $deadline) { Start-Sleep -Milliseconds 20 }`,
+  ].join('\n');
+  try {
+    const taken = await new Promise<string>((resolve, reject) => {
+      const child = spawn(shell, ['-NoProfile', '-NonInteractive', '-Command', script], {
+        env: { ...process.env, WMUX_INSTANCE: instance, WMUX_SURFACE_ID: SURFACE, WMUX_PIPE_TOKEN: '' },
+        stdio: ['ignore', 'pipe', 'pipe'],
+      });
+      let out = '';
+      child.stdout.on('data', (d) => { out += d.toString(); });
+      child.on('error', reject);
+      child.on('exit', () => resolve(out.trim()));
+    });
+    // The last connection's 'end' can land just after the host exits.
+    await new Promise((r) => setTimeout(r, 200));
+    return { taken, messages: messages.filter((m) => /git_branch/.test(m)) };
+  } finally {
+    server.close();
+  }
+}
+
+describe.skipIf(!host || process.platform !== 'win32')('the PowerShell git worker reaches wmux (#279)', () => {
+  it('reports the branch from the worker runspace, not only from the synchronous path', async () => {
+    const repoRoot = path.join(__dirname, '..', '..');
+    const { taken, messages } = await workerReports(host as string, repoRoot);
+    expect(taken).toBe('taken=True');
+    expect(messages).toHaveLength(1);
+    expect(messages[0]).toMatch(new RegExp(`^report_git_branch ${SURFACE} \\S+( dirty)?$`));
+  }, 30_000);
+
+  it('clears from the worker outside a repo', async () => {
+    const { taken, messages } = await workerReports(host as string, os.tmpdir());
+    expect(taken).toBe('taken=True');
+    expect(messages).toEqual([`clear_git_branch ${SURFACE}`]);
+  }, 30_000);
+});
+
+// ---------------------------------------------------------------------------
 // bash
 // ---------------------------------------------------------------------------
 
