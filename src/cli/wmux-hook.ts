@@ -38,8 +38,33 @@ if (argv[0] === '--event') {
  */
 const firedAt = Date.now();
 
-const pipePath = process.env.WMUX_PIPE || '\\\\.\\pipe\\wmux';
+// The fallback tracks WMUX_INSTANCE the way shared/instance.ts's getPipePath()
+// does — restated rather than imported, because the CLI ships file by file.
+const instance = process.env.WMUX_INSTANCE?.trim() ?? '';
+const pipePath = process.env.WMUX_PIPE || '\\\\.\\pipe\\wmux' + (instance ? '-' + instance : '');
 const surfaceId = process.env.WMUX_SURFACE_ID || '';
+
+/**
+ * Whether this hook fired in a pane of ANOTHER terminal multiplexer (#282).
+ *
+ * openwong2kim/wmux — a different app with the same name — also exports
+ * `WMUX_SURFACE_ID` into its panes, and Claude Code runs this hook from the
+ * global ~/.claude/settings.json in every session on the machine. With both
+ * installed, every tool call in one of ITS panes was reported to this wmux,
+ * attributed to a surface id this wmux never issued.
+ *
+ * A pane this wmux spawned always carries `WMUX=1` and `WMUX_PIPE` (forwarded
+ * into WSL through WSLENV), and a devcontainer or ssh session reaching it over
+ * the bridge carries `WMUX_REMOTE`. The other app sets none of them — it
+ * strips every inherited `WMUX_*` before spawning — so a surface id with none
+ * of our markers beside it is not ours. A hook with NO surface id is left to
+ * behave exactly as before.
+ */
+function isForeignPane(env: NodeJS.ProcessEnv): boolean {
+  if (!env.WMUX_SURFACE_ID) return false;
+  return env.WMUX !== '1' && !env.WMUX_PIPE && !env.WMUX_REMOTE?.trim();
+}
+if (isForeignPane(process.env)) process.exit(0);
 
 /**
  * TCP transport for a hook firing where the pipe does not exist (issue #19).
