@@ -37,6 +37,7 @@ import { PortScanner } from './port-scanner';
 import { CDPProxy } from './cdp-proxy';
 import { IPC_CHANNELS, SurfaceId, BrowserEngine, PaneId, WorkspaceId } from '../shared/types';
 import { getPipePath, getAppDataDir, ensurePipeToken, getAppUserModelId } from '../shared/instance';
+import { resolveUserDataDir } from './chromium-profile';
 import {
   loadSession,
   saveSession,
@@ -946,10 +947,20 @@ stripMotw();
 // resolves to the GUI exe rather than the CLI, so `wmux browser open <url>` (and
 // any stray re-launch) would otherwise spawn a SECOND window and ignore its args.
 // Holding the lock makes the second launch hand off to the running instance,
-// which just focuses its window. Named instances (WMUX_INSTANCE) point Electron's
-// userData at their own dir so the lock is per-instance and dev/prod still coexist.
-if (process.env.WMUX_INSTANCE?.trim()) {
-  app.setPath('userData', getAppDataDir());
+// which just focuses its window.
+//
+// Electron keys that lock on userData, which was `%APPDATA%\wmux` — also the
+// default of openwong2kim/wmux, a different app with the same name, so the two
+// could not run at once (#282). Electron's profile now lives in its own
+// subdirectory of this instance's data dir (WMUX_INSTANCE included, so dev and
+// prod still coexist), carried over once; see chromium-profile.ts. Must run
+// before anything opens the profile, which is why it is here, at module load.
+{
+  const { dir, result } = resolveUserDataDir(getAppDataDir());
+  app.setPath('userData', dir);
+  // logDiagnostic only needs getAppDataDir(), so it works this early.
+  if (result.status === 'migrated') logDiagnostic('profile-migrated', { to: dir, copied: result.copied.join('|') });
+  if (result.status === 'failed') logDiagnostic('profile-migration-failed', { kept: dir, error: result.error });
 }
 const gotInstanceLock = app.requestSingleInstanceLock();
 

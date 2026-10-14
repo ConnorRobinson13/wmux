@@ -18,13 +18,18 @@
  */
 import * as fs from 'fs';
 import * as path from 'path';
-import { app } from 'electron';
+import { getAppDataDir } from '../shared/instance';
 import { Manifest, Matcher, Rule, LIMITS } from '../shared/detection/types';
 import { isSafeRegexSource } from '../shared/detection/engine';
 import { AGENT_ALIASES } from './agent-argv';
 
+/**
+ * wmux's own data dir, not Electron's userData: the two stopped being the same
+ * directory in 2.22.0 (#282, chromium-profile.ts), and these are the user's
+ * files, which stay where they always were.
+ */
 export function userManifestDir(): string {
-  return path.join(app.getPath('userData'), 'agent-detection');
+  return path.join(getAppDataDir(), 'agent-detection');
 }
 
 const STATES = new Set(['blocked', 'working', 'idle']);

@@ -7,12 +7,11 @@
  * work, but the renderer is also the thread drawing every terminal, and a
  * debugging command should not have to interrupt it.
  */
-import { app } from 'electron';
 import * as fs from 'fs';
 import { DetectionResult, Manifest } from '../shared/detection/types';
 import { detectScreen } from '../shared/detection/engine';
 import { BUNDLED_MANIFESTS } from '../shared/detection/manifests';
-import { loadUserManifests, mergeManifests } from './user-manifests';
+import { loadUserManifests, mergeManifests, userManifestDir } from './user-manifests';
 
 /** Same bound, and the same reason, as agent-state.ts's record map. */
 const MAX_TRACKED_SURFACES = 256;
@@ -175,10 +174,10 @@ export function explainFile(file: string, agent?: string): ExplainResult {
   };
 }
 
-/** `app` is unavailable in a bare unit test; the directory is informational. */
+/** The directory is informational; it is the one loadUserManifests reads. */
 function manifestDirSafe(): string {
   try {
-    return `${app.getPath('userData')}\\agent-detection`;
+    return userManifestDir();
   } catch {
     return '';
   }
