@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import fs from 'fs';
 import path from 'path';
-import { stripLegacyBlocks } from '../../src/main/claude-context';
+import { stripLegacyBlocks, stripWmuxBlock } from '../../src/main/claude-context';
 import { injectWmuxBlock } from '../../src/main/opencode-context';
 
 const BLOCK = fs.readFileSync(
@@ -37,19 +37,25 @@ describe('global agent-context block (issue #152)', () => {
   });
 
   it('says what to do when the check fails, so a false premise has an exit', () => {
-    expect(BLOCK).toMatch(/if it replies something else, or nothing at all/i);
     // \s+ because the source is hard-wrapped — the sentence may straddle a line.
+    expect(BLOCK).toMatch(/wmux is not\s+running for this\s+session/i);
     expect(BLOCK).toMatch(/use your (normal|own)\s+tools/i);
   });
 
-  it('does not read a missing CLI as a missing wmux (issue #158)', () => {
-    // The exit above must stay narrow. wmux only puts `wmux` on PATH for
-    // terminals it spawns, so "command not found" is the NORMAL state of every
-    // session this globally-loaded block was written to reach — and treating
-    // that as "wmux is absent" told every agent on a healthy machine to stand
-    // down. Only a failure to ANSWER is evidence of absence.
-    expect(BLOCK).not.toMatch(/command not found, no reply, or an error/i);
-    expect(BLOCK).toMatch(/not found[^]*does not mean wmux\s*\nis absent/i);
+  it('does not read a missing — or WRONG — CLI as a missing wmux (issues #158, #282)', () => {
+    // wmux only puts `wmux` on PATH for terminals it spawns, so "command not
+    // found" is the NORMAL state of every session this globally-loaded block
+    // was written to reach (#158). And since #282 a bare `wmux` may be another
+    // app's CLI (openwong2kim/wmux puts its own on the user PATH), which
+    // answers something other than `pong` while this wmux runs fine. So no
+    // first answer is evidence of absence: anything but `pong` leads to the
+    // absolute path, and only THAT failing concludes.
+    expect(BLOCK).toMatch(/anything else[^]*do not\s+conclude yet/i);
+    expect(BLOCK).toMatch(/different program also called `wmux`/i);
+    const absolute = BLOCK.indexOf('{{WMUX_CLI_BIN}}/wmux" ping');
+    const conclusion = BLOCK.search(/wmux is not\s+running for this\s+session/i);
+    expect(absolute).toBeGreaterThan(-1);
+    expect(conclusion).toBeGreaterThan(absolute);
   });
 
   it('never removes the reader\'s alternatives outright', () => {
@@ -155,5 +161,50 @@ describe('legacy marker-less copies (issue #152)', () => {
   it('is idempotent — a clean file is returned unchanged', () => {
     const clean = `# Notes\n\nmine\n\n${BLOCK.trimEnd()}\n`;
     expect(stripLegacyBlocks(clean)).toBe(clean);
+  });
+});
+
+// Found while working #282: a real ~/.claude/CLAUDE.md carried six MARKED
+// copies of an older wmux block after the managed one. The recursion treated
+// every later marker pair as managed and kept them all, forever.
+describe('stale MARKED duplicates of the block', () => {
+  const stale = [
+    '<!-- wmux:start — AUTO-MANAGED BY wmux. Do not edit this section manually. -->',
+    '',
+    '# wmux',
+    '',
+    'You are running inside wmux, a terminal multiplexer with a browser panel.',
+    '',
+    '<!-- wmux:end -->',
+    '',
+  ].join('\n');
+  const theirs = '<!-- smux-suez:start v=1 -->\n# Suez notes\nkeep me\n<!-- smux-suez:end -->\n';
+
+  it('keeps the first (managed) block and drops every later copy', () => {
+    const doc = `${BLOCK}\n# My notes\n\nkeep this\n\n${stale}\n${stale}\n${theirs}\n${stale}`;
+    const out = stripLegacyBlocks(doc);
+    expect(out.split('<!-- wmux:start').length - 1).toBe(1);
+    expect(out.split('<!-- wmux:end -->').length - 1).toBe(1);
+    expect(out).toContain('keep this');
+    // Another tool's own marked block is not ours to touch.
+    expect(out).toContain('keep me');
+    expect(out.startsWith(BLOCK.trimEnd().slice(0, 40))).toBe(true);
+  });
+
+  it('is a fixed point: a cleaned file is left exactly as it is', () => {
+    const once = stripLegacyBlocks(`${BLOCK}\n${stale}\nuser text\n`);
+    expect(stripLegacyBlocks(once)).toBe(once);
+  });
+
+  it('an unterminated later start is left alone rather than eating the user\'s text', () => {
+    const doc = `${BLOCK}\n<!-- wmux:start broken\nuser text after\n`;
+    expect(stripLegacyBlocks(doc)).toContain('user text after');
+  });
+
+  it('uninstall removes the duplicates too, not only the first block', () => {
+    const out = stripWmuxBlock(`# Mine\n\n${BLOCK}\n${stale}\n${stale}\ntail\n`);
+    expect(out).not.toContain('wmux:start');
+    expect(out).toContain('# Mine');
+    expect(out).toContain('tail');
   });
 });

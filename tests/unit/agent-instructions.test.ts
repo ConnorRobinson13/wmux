@@ -24,8 +24,10 @@ describe('agent instruction block (issue #158)', () => {
     // The old text collapsed three symptoms into one conclusion:
     //   "command not found, no reply, or an error → wmux is not running"
     expect(raw).not.toMatch(/command not found, no reply, or an error/);
-    // Only a failure to ANSWER is evidence of absence.
-    expect(raw).toMatch(/not found[^]*does not mean wmux\s*\nis absent/);
+    // No FIRST answer is evidence of absence: not found is the normal state
+    // off a wmux pane (#158), and a bare `wmux` may be another app's CLI
+    // (#282). Anything but `pong` goes to the absolute probe first.
+    expect(raw).toMatch(/anything else[^]*do not\s+conclude yet/i);
   });
 
   it('gives the reader a second probe that does not depend on PATH', () => {
@@ -57,7 +59,7 @@ describe('agent instruction block (issue #158)', () => {
   it('still tells a session with no wmux at all to stand down', () => {
     // The block must not become a machine for insisting wmux is present. If the
     // absolute probe also fails, the reader is told plainly to use normal tools.
-    expect(raw).toMatch(/then\s*\nwmux really is absent/);
-    expect(raw).toMatch(/Nothing here is a\s*\nrestriction on what you may otherwise do/);
+    expect(raw).toMatch(/If it too does not answer `pong`, wmux is not\s+running for this\s+session/);
+    expect(raw).toMatch(/Nothing here is a\s+restriction on what you may otherwise do/);
   });
 });

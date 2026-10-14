@@ -15,24 +15,22 @@ wmux ping     # "pong" → wmux is here
 
 **If `wmux ping` answers `pong`**, everything below is available and preferred.
 
-**If it replies something else, or nothing at all**, wmux is not running for this
-session. Ignore the whole section and use your normal tools. Nothing here is a
-restriction on what you may otherwise do.
-
-**If the command is not found, that is a different answer and does not mean wmux
-is absent.** wmux puts `wmux` on PATH only for terminals it starts itself, so any
-session it did not spawn — a desktop app, a plain terminal, an SSH session, a
+**If it answers anything else — command not found, an error, no output — do not
+conclude yet.** wmux puts `wmux` on PATH only for terminals it starts itself, so
+any session it did not spawn — a desktop app, a plain terminal, an SSH session, a
 scheduled run, anything already open before wmux started — will not find it there
-even while wmux is running normally. Ask the install directly before concluding
-anything:
+even while wmux is running normally. And a different program also called `wmux`
+may be on PATH (another app by that name puts its own `wmux` command there), so a
+bare `wmux` can be the wrong one. Ask this install directly:
 
 ```bash
 "{{WMUX_CLI_BIN}}/wmux" ping
 ```
 
 If that answers `pong`, wmux is running: use that absolute path in place of bare
-`wmux` for every command below. If it too is not found or does not answer, then
-wmux really is absent.
+`wmux` for every command below. If it too does not answer `pong`, wmux is not
+running for this session. Ignore the whole section and use your normal tools.
+Nothing here is a restriction on what you may otherwise do.
 
 One check per session is enough; `wmux ping` needs no arguments and no auth, and
 fails immediately when nothing is listening.

@@ -41,10 +41,33 @@ export function stripLegacyBlocks(content: string): string {
     return collapse(
       stripLegacyBlocks(content.substring(0, managed.start))
       + content.substring(managed.start, managed.end)
-      + stripLegacyBlocks(content.substring(managed.end)),
+      + stripLegacyBlocks(dropMarkedBlocks(content.substring(managed.end))),
     );
   }
   return collapse(dropLegacySections(content.split('\n')).join('\n'));
+}
+
+/**
+ * Remove every complete `<!-- wmux:start … <!-- wmux:end -->` pair.
+ *
+ * Applied only to what follows the FIRST pair — the one block that is managed.
+ * This used to recurse with stripLegacyBlocks, which treated each later pair as
+ * managed in turn and so protected every one of them: a machine that had lived
+ * through a few marker revisions carried six stale copies of wmux's block,
+ * MARKED, that no launch would ever remove — each loaded into every Claude
+ * session as instructions contradicting the current one (found while working
+ * #282, which is about another app named wmux; that app writes no CLAUDE.md
+ * block, so these markers are only ever wmux's own). An unterminated start is
+ * left alone: without its end there is no telling where the user's text resumes.
+ */
+function dropMarkedBlocks(content: string): string {
+  let out = content;
+  for (let start = out.indexOf(START_MARKER); start !== -1; start = out.indexOf(START_MARKER, start)) {
+    const end = out.indexOf(END_MARKER, start);
+    if (end === -1) break;
+    out = out.substring(0, start) + out.substring(end + END_MARKER.length);
+  }
+  return out;
 }
 
 /** The marker-delimited block, which the scan must leave alone. */
@@ -180,7 +203,9 @@ export function stripWmuxBlock(content: string): string | null {
   if (startIdx === -1) return null;
   const endIdx = content.indexOf(END_MARKER, startIdx);
   const before = content.substring(0, startIdx);
-  const after = endIdx === -1 ? '' : content.substring(endIdx + END_MARKER.length);
+  // Stale duplicates after it go too — an uninstall that leaves copies of the
+  // block behind has not uninstalled (see dropMarkedBlocks).
+  const after = endIdx === -1 ? '' : collapse(dropMarkedBlocks(content.substring(endIdx + END_MARKER.length)));
   const joined = before.trimEnd() + (after.trim() ? '\n\n' + after.trimStart() : '');
   return joined.trim() ? joined.trimEnd() + '\n' : '';
 }
