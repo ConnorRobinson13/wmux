@@ -308,6 +308,7 @@ export const en = {
   'settings.browser.linksSection': 'Links',
   'settings.browser.openLinksExternally': 'Open links in the system browser',
   'settings.browser.openLinksExternallyHint': 'Clicked links in terminals and markdown go to your default browser instead of the wmux panel. Ctrl+click always does the opposite.',
+  'settings.browser.mouseAppLinksHint': 'In a pane whose program uses the mouse (OpenCode, vim with mouse on), a plain click belongs to that program. Ctrl+click opens the link with the setting above.',
   'settings.browser.devToolsSection': 'Developer Tools',
   'settings.browser.devToolsIcon': 'DevTools icon',
   'settings.browser.devToolsIcon.default': 'Default',

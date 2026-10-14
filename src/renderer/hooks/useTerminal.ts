@@ -15,7 +15,7 @@ import { SplitNode, SurfaceId, ThemeConfig, type InsertionResult } from '../../s
 import { UserColorScheme } from '../store/settings-slice';
 import { normalizeOscTitle } from '../store/osc-title-slice';
 import { terminalBgAlpha } from '../store/backdrop';
-import { activateTerminalLink, terminalLinkHandler } from '../utils/terminal-links';
+import { createTerminalLinkActivation } from '../utils/terminal-links';
 import {
   MouseModeState,
   applyMouseModeSequences,
@@ -853,6 +853,11 @@ export function useTerminal({ surfaceId, shell, cwd, visible = true, focused = t
   useEffect(() => {
     if (!terminalRef.current) return;
 
+    // Link clicks for both of xterm's link sources. A plain click on a link is
+    // left to the app while it has mouse tracking on (#280) — see
+    // utils/terminal-links. The getter runs on click, after `terminal` exists.
+    const links = createTerminalLinkActivation(() => terminal.modes.mouseTrackingMode);
+
     // Create terminal instance. Theme/font are applied from settings on creation
     // AND kept in sync via a later effect, so live edits repaint without recreation.
     const terminal = new Terminal({
@@ -873,7 +878,8 @@ export function useTerminal({ surfaceId, shell, cwd, visible = true, focused = t
       // enabled, or toggling it would require recreating every terminal.
       allowTransparency: true,
       allowProposedApi: true,
-      linkHandler: terminalLinkHandler,
+      // Read at click time, so referencing `terminal` here is safe (#280).
+      linkHandler: links.linkHandler,
       scrollback: prefs.scrollbackLines || 10000,
       // Every wmux PTY is ConPTY, and xterm grows rows differently for one.
       // Without this a pane that gets TALLER (an adjacent pane closed, the
@@ -901,7 +907,7 @@ export function useTerminal({ surfaceId, shell, cwd, visible = true, focused = t
 
     // Create and load addons
     const fitAddon = new FitAddon();
-    const webLinksAddon = new WebLinksAddon(activateTerminalLink);
+    const webLinksAddon = new WebLinksAddon(links.activate);
     const searchAddon = new SearchAddon();
     const unicode11Addon = new Unicode11Addon();
     const imageAddon = new ImageAddon();

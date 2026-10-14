@@ -238,6 +238,7 @@ export const fr: Translation = {
   'settings.browser.linksSection': 'Liens',
   'settings.browser.openLinksExternally': 'Ouvrir les liens dans le navigateur système',
   'settings.browser.openLinksExternallyHint': 'Les liens cliqués dans les terminaux et le markdown s’ouvrent dans votre navigateur par défaut plutôt que dans le panneau wmux. Ctrl+clic fait toujours l’inverse.',
+  'settings.browser.mouseAppLinksHint': 'Dans un panneau dont le programme utilise la souris (OpenCode, vim avec la souris activée), un clic simple appartient à ce programme. Ctrl+clic ouvre le lien selon le réglage ci-dessus.',
   'settings.browser.devToolsSection': 'Outils de développement',
   'settings.browser.devToolsIcon': 'Icône DevTools',
   'settings.browser.devToolsIcon.default': 'Par défaut',

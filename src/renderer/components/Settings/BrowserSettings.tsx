@@ -100,6 +100,12 @@ export default function BrowserSettings() {
           'Clicked links in terminals and markdown go to your default browser instead of the wmux panel. Ctrl+click always does the opposite.',
         )}
       </p>
+      <p className="settings-hint">
+        {t(
+          'settings.browser.mouseAppLinksHint',
+          'In a pane whose program uses the mouse (OpenCode, vim with mouse on), a plain click belongs to that program. Ctrl+click opens the link with the setting above.',
+        )}
+      </p>
 
       <div className="settings-divider" />
       <h3 className="settings-section-title">{t('settings.browser.devToolsSection', 'Developer Tools')}</h3>
