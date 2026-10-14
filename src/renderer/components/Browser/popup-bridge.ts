@@ -8,11 +8,15 @@
  * was therefore a dead click (issue #126, reported against a note-taking app
  * whose "+ New" button is `<a href="#new" target="_blank">`).
  *
- * The fix routes those intents into the pane itself rather than turning on
- * `allowpopups`: a real popup would be a detached BrowserWindow outside wmux's
- * layout and outside the webview hardening in main. Opening in place keeps the
- * page in the panel, and the address bar's Back button is the way out — the
+ * The fix routes those intents into the pane itself: opening in place keeps
+ * the page in the panel, and the address bar's Back button is the way out — the
  * same bargain every docked browser view makes.
+ *
+ * Since #281 the webview DOES carry `allowpopups`, for one case only: a sized
+ * popup, which popup sign-in needs as a real window that keeps its opener.
+ * Main decides (webviewWindowOpenPolicy) and contains it — a child of the wmux
+ * window, hardened, closed with its opener. Everything else still opens in
+ * place, here and, for the requests this bridge never sees, in main.
  *
  * Written as a self-contained function taking its globals as an argument so it
  * can be shipped through `webview.executeJavaScript` (see BrowserPane) *and*
@@ -69,9 +73,28 @@ export function installPopupBridge(scope: any): void {
     }
   }, true);
 
+  // A SIZED popup is not a new tab (#281). Popup sign-in (Firebase
+  // signInWithPopup and every SDK shaped like it) opens one and then waits on
+  // `window.opener` for the result, so the page that asked must stay alive —
+  // navigating the panel in place replaced it with the provider's page and the
+  // sign-in could never complete. Those go to the native open, which the
+  // webview now lets out (`allowpopups`) and main turns into a contained child
+  // window (webviewWindowOpenPolicy). noopener/noreferrer alone do not make a
+  // popup — Chromium opens those as a tab — so they do not count here either.
+  function wantsPopup(features: any): boolean {
+    if (typeof features !== 'string') return false;
+    return features
+      .split(/[\s,]+/)
+      .map(function (token) { return token.split('=')[0].toLowerCase(); })
+      .some(function (key) { return key !== '' && key !== 'noopener' && key !== 'noreferrer'; });
+  }
+
   const nativeOpen = scope.open;
   scope.open = function (href?: any, name?: any, features?: any) {
     const url = resolve(href);
+    if (url && wantsPopup(features) && typeof nativeOpen === 'function') {
+      return nativeOpen.call(scope, href, name, features);
+    }
     if (url) {
       scope.location.href = url;
       // Null, as before. Pages that write into the handle (`w.document.write`)

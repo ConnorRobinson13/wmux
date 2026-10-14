@@ -7,7 +7,13 @@ import { logDiagnostic } from './crash-diagnostics';
 import { planQuit } from './quit-sequence';
 import { handleBrowserV2 } from './v2-browser';
 import { pickBrowserSurface } from './browser-engine-surface';
-import { windowOpenPolicy, willNavigatePolicy } from './webview-navigation';
+import {
+  windowOpenPolicy,
+  willNavigatePolicy,
+  webviewWindowOpenPolicy,
+  needsAppWindowNavigationLock,
+  popupWindowTitle,
+} from './webview-navigation';
 import { correctedDashboardHeaders, DASHBOARD_HEADER_FILTER } from './dashboard-content-type';
 import {
   agentBrowserNeedsTeardown,
@@ -1010,22 +1016,68 @@ function hardenWebContents(): void {
       });
     }
 
-    // Open new-window requests externally rather than spawning in-app windows
-    // with full privileges. Only http/https go to the OS browser; deny the rest.
-    // This and will-navigate below share ONE policy (webview-navigation.ts) so
-    // the "open http(s) externally" rule can't drift between them.
-    contents.setWindowOpenHandler(({ url }) => {
-      const { openExternal, response } = windowOpenPolicy(url);
-      if (openExternal) shell.openExternal(url).catch(() => {});
-      return response;
-    });
+    if (type === 'webview') {
+      // The browser panel (#281): a sized popup — popup sign-in — opens as a
+      // real window that keeps its opener; every other http(s) request
+      // navigates the panel in place, as the popup bridge has since #126.
+      // See webviewWindowOpenPolicy for the measured dispositions.
+      contents.setWindowOpenHandler((details) => {
+        const decision = webviewWindowOpenPolicy(details);
+        if (decision.kind === 'navigate-in-place') {
+          contents.loadURL(decision.url).catch(() => {});
+          return { action: 'deny' };
+        }
+        if (decision.kind === 'drop') return { action: 'deny' };
+        const host = contents.hostWebContents ? BrowserWindow.fromWebContents(contents.hostWebContents) : null;
+        return {
+          action: 'allow',
+          overrideBrowserWindowOptions: {
+            // A child of the wmux window: above it, minimised with it, and
+            // never a stray top-level window in the taskbar.
+            ...(host ? { parent: host } : {}),
+            autoHideMenuBar: true,
+            // A popup inherits the opener's webPreferences, which
+            // will-attach-webview has already stripped; stated again rather
+            // than trusted, because this window is outside the webview tag.
+            webPreferences: { nodeIntegration: false, contextIsolation: true, sandbox: true },
+          },
+        };
+      });
+      contents.on('did-create-window', (child, { url }) => {
+        child.setMenu(null);
+        // No address bar, so the title says whose page this is.
+        child.setTitle(popupWindowTitle(url, ''));
+        child.webContents.on('page-title-updated', (e, title) => {
+          e.preventDefault();
+          child.setTitle(popupWindowTitle(child.webContents.getURL(), title));
+        });
+        // The popup exists for the page that opened it. When that page's
+        // webview goes — the pane closed, the tab removed — the popup has
+        // nobody left to hand its result to, so it goes too.
+        const closeChild = () => { if (!child.isDestroyed()) child.close(); };
+        contents.once('destroyed', closeChild);
+        child.once('closed', () => contents.removeListener('destroyed', closeChild));
+      });
+    } else {
+      // Open new-window requests externally rather than spawning in-app windows
+      // with full privileges. Only http/https go to the OS browser; deny the rest.
+      // This and will-navigate below share ONE policy (webview-navigation.ts) so
+      // the "open http(s) externally" rule can't drift between them.
+      contents.setWindowOpenHandler(({ url }) => {
+        const { openExternal, response } = windowOpenPolicy(url);
+        if (openExternal) shell.openExternal(url).catch(() => {});
+        return response;
+      });
+    }
 
     // The main app window (loads localhost in dev, file:// in prod) must never
     // be navigated to remote content. Webviews host their own contents and are
-    // exempt — their navigation is the whole point. This handles same-frame
-    // navigations only; new-window requests never reach it (setWindowOpenHandler
-    // above owns those), so a single gesture is launched by one path, never both.
-    if (type !== 'webview') {
+    // exempt — their navigation is the whole point — and so is a popup the
+    // panel opened (#281), which has an opener and no wmux UI in it. This
+    // handles same-frame navigations only; new-window requests never reach it
+    // (setWindowOpenHandler above owns those), so a single gesture is launched
+    // by one path, never both.
+    if (needsAppWindowNavigationLock(type, !!contents.opener)) {
       contents.on('will-navigate', (e, url) => {
         const { preventDefault, openExternal } = willNavigatePolicy(url);
         if (preventDefault) e.preventDefault();

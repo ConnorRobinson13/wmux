@@ -391,8 +391,9 @@ export default function BrowserPane({
       window.wmux.cdp.attach(wcId, surfaceId, workspaceId ?? null);
     }
   }, [surfaceId, workspaceId]);
-  // `target="_blank"` links and `window.open()` are silently dropped by a
-  // webview with no `allowpopups`, so they read as dead buttons (issue #126).
+  // `target="_blank"` links and `window.open()` used to be silently dropped by
+  // a webview with no `allowpopups`, so they read as dead buttons (issue #126).
+  // The bridge opens them in place; a sized popup goes native (#281).
   // Re-installed on every dom-ready because each document starts clean; the
   // bridge itself is idempotent for SPA re-entry.
   //
@@ -626,6 +627,12 @@ export default function BrowserPane({
         <webview
           ref={webviewRef}
           src={initialSrc}
+          // Lets a new-window request reach main's setWindowOpenHandler at all
+          // (without it Chromium drops it silently). Main lets out only a sized
+          // popup — popup sign-in, #281 — and opens the rest in place. Spread
+          // as a STRING: the JSX type says boolean, but React drops a boolean
+          // `true` on an element it does not know rather than writing it.
+          {...{ allowpopups: 'true' }}
           className="browser-pane__webview"
           // Hidden rather than unmounted: unmounting destroys the guest page and
           // its CDP registration, so the setup card would cost the user the tab

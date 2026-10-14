@@ -4,6 +4,9 @@ import {
   isInternalAppUrl,
   windowOpenPolicy,
   willNavigatePolicy,
+  webviewWindowOpenPolicy,
+  needsAppWindowNavigationLock,
+  popupWindowTitle,
 } from '../../src/main/webview-navigation';
 
 // The webview/navigation hardening in index.ts routes external URLs to the OS
@@ -96,5 +99,70 @@ describe('the two handlers cannot diverge on the launch decision', () => {
     for (const u of [...HTTP, ...NON_HTTP].filter(u => !isInternalAppUrl(u))) {
       expect(windowOpenPolicy(u).openExternal).toBe(willNavigatePolicy(u).openExternal);
     }
+  });
+});
+
+// #281 — what the BROWSER PANEL's new-window requests do. Dispositions are the
+// ones Electron 43 reports, measured against a standalone harness.
+describe('webviewWindowOpenPolicy (#281)', () => {
+  const U = 'https://accounts.example/o/oauth2/auth?x=1';
+
+  it('a sized popup is let out as a real window', () => {
+    expect(webviewWindowOpenPolicy({ url: U, features: 'width=500,height=600', disposition: 'new-window' })).toEqual({ kind: 'popup' });
+    expect(webviewWindowOpenPolicy({ url: U, features: 'popup', disposition: 'new-window' })).toEqual({ kind: 'popup' });
+  });
+
+  it.each([
+    ['plain window.open(u)', '', 'foreground-tab'],
+    ['noopener only', 'noopener', 'foreground-tab'],
+    ['ctrl+click', '', 'background-tab'],
+    ['shift+click (a new window, but no features: nobody is waiting on it)', '', 'new-window'],
+    ['a feature string Chromium still reads as a tab', 'location=yes,toolbar=yes', 'foreground-tab'],
+  ])('%s navigates the panel in place', (_name, features, disposition) => {
+    expect(webviewWindowOpenPolicy({ url: U, features, disposition })).toEqual({ kind: 'navigate-in-place', url: U });
+  });
+
+  it.each(['javascript:alert(1)', 'data:text/html,x', 'file:///C:/Windows/win.ini', 'about:blank'])(
+    '%s is dropped, popup or not',
+    (url) => {
+      expect(webviewWindowOpenPolicy({ url, features: 'width=1', disposition: 'new-window' })).toEqual({ kind: 'drop' });
+      expect(webviewWindowOpenPolicy({ url, features: '', disposition: 'foreground-tab' })).toEqual({ kind: 'drop' });
+    },
+  );
+
+  it('never sends anything from the panel to the OS browser', () => {
+    // These requests never reached a handler before #281 (no allowpopups), so
+    // an openExternal here would be a new behaviour, not a fix.
+    for (const disposition of ['new-window', 'foreground-tab', 'background-tab', 'other']) {
+      expect(webviewWindowOpenPolicy({ url: U, features: '', disposition }).kind).not.toBe('popup');
+    }
+  });
+});
+
+describe('needsAppWindowNavigationLock (#281)', () => {
+  it("locks wmux's own windows", () => {
+    expect(needsAppWindowNavigationLock('window', false)).toBe(true);
+  });
+  it('never locks a webview', () => {
+    expect(needsAppWindowNavigationLock('webview', false)).toBe(false);
+  });
+  it('does not lock a popup the panel opened — sign-in is a chain of navigations', () => {
+    expect(needsAppWindowNavigationLock('window', true)).toBe(false);
+  });
+});
+
+describe('popupWindowTitle (#281)', () => {
+  it('always leads with the host, since the popup has no address bar', () => {
+    expect(popupWindowTitle('https://accounts.google.com/signin', 'Sign in - Google Accounts')).toBe('accounts.google.com — Sign in - Google Accounts');
+  });
+  it('a page cannot title itself as something else without its host showing', () => {
+    expect(popupWindowTitle('https://evil.example/x', 'wmux — Sign in')).toBe('evil.example — wmux — Sign in');
+  });
+  it('no title yet, or a title that is just the host: the host alone', () => {
+    expect(popupWindowTitle('https://a.example:8443/', '')).toBe('a.example:8443');
+    expect(popupWindowTitle('https://a.example/', 'a.example')).toBe('a.example');
+  });
+  it('an unparseable url keeps the page title', () => {
+    expect(popupWindowTitle('', 'Title')).toBe('Title');
   });
 });

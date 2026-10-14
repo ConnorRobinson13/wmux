@@ -168,3 +168,49 @@ describe('browser pane popup bridge (issue #126)', () => {
     expect(source).not.toMatch(/__(vite|awaiter|spreadArray|assign|rest|generator)/);
   });
 });
+
+// #281: popup sign-in (Firebase signInWithPopup and friends) opens a SIZED
+// popup and waits on window.opener for the result. Navigating the panel in
+// place destroyed the page that was waiting, so sign-in never completed.
+describe('sized popups go to the native window.open (#281)', () => {
+  it.each([
+    'width=500,height=600',
+    'popup',
+    'popup=yes',
+    'left=10, top=10, width=400',
+    'width=500,height=600,noopener',
+  ])('%s → native, the panel stays put', (features) => {
+    const scope = makeScope();
+    const native = scope.open;
+    installPopupBridge(scope);
+
+    expect(scope.open('https://accounts.example/auth', 'auth', features)).toBe('native-popup');
+    expect(native).toHaveBeenCalledWith('https://accounts.example/auth', 'auth', features);
+    expect(scope.location.href).toBe('https://textarea.online/');
+  });
+
+  it.each([
+    [undefined],
+    [''],
+    ['   '],
+    ['noopener'],
+    ['noopener,noreferrer'],
+  ])('features %j is not a popup: still opens in place', (features) => {
+    const scope = makeScope();
+    const native = scope.open;
+    installPopupBridge(scope);
+
+    expect(scope.open('/next', '_blank', features)).toBeNull();
+    expect(native).not.toHaveBeenCalled();
+    expect(scope.location.href).toBe('https://textarea.online/next');
+  });
+
+  it('a sized popup to a non-http(s) target is never let out by the bridge', () => {
+    const scope = makeScope();
+    installPopupBridge(scope);
+    // Unresolvable for the bridge, so it falls to the native open — which
+    // main's policy drops (webviewWindowOpenPolicy: not http(s) → drop).
+    scope.open('javascript:alert(1)', 'x', 'width=10');
+    expect(scope.location.href).toBe('https://textarea.online/');
+  });
+});
