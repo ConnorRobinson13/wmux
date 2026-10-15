@@ -24,7 +24,8 @@ describe('buildManifestTree', () => {
     const { tree, surfaces } = buildManifestTree(spec);
     const ls = leaves(tree);
     expect(ls).toHaveLength(3);
-    expect(ls[0].surfaces[0]).toMatchObject({ id: surfaces.db, type: 'terminal', cwd: 'C:\\repo', customTitle: 'db' });
+    expect(ls[0].surfaces[0]).toMatchObject({ id: surfaces.db, type: 'terminal', cwd: 'C:\\repo', defaultTitle: 'db' });
+    expect(ls[0].surfaces[0].customTitle).toBeUndefined();
     expect(ls[1].surfaces[0]).toMatchObject({ id: surfaces.api, cwd: 'C:\\repo\\apps\\api', env: { PORT: '4000' } });
     expect(ls[2].surfaces.map((s) => [s.type, s.url])).toEqual([
       ['browser', 'http://localhost:5173/'],

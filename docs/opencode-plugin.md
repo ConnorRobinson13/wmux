@@ -81,6 +81,32 @@ empty file means OpenCode did not pick it up.
 
 ---
 
+## Session handle for restore
+
+Since plugin version 7 ([#290][290]) the plugin also reports which OpenCode
+session each pane is in, so **Settings → Workspace → Resume OpenCode sessions on
+restore** can reopen it with `opencode -s <id>`. The rules, each checked
+against real `opencode-ai` 1.18.35 and `@opencode/cli` 2.0.24:
+
+- The pane's session is the last **top-level** session anything happened in.
+  A task subagent is its own session firing events on the same pane; a session
+  born with a parent (`info.parentID` on v1, `data.parentID` on v2's flat
+  `session.created`) is never reported. `parentID` on `message.updated` is a
+  *message* id and is ignored.
+- Ids must match `ses_<base62>`; anything else is dropped here and again in
+  main and in the renderer, since the id ends up on a command line.
+- Quitting OpenCode releases the handle (`wmux release-agent --provider
+  opencode --session <id>`), so a restore gives back the shell. Main refuses
+  that release while wmux itself is quitting. OpenCode 2's `run` neither exits
+  nor disposes its plugins cleanly, so there the handle may survive a quit.
+- **OpenCode 2's shared background server reports nothing.** By default v2 runs
+  one `opencode serve --service` for every TUI, plugins live in it, and its
+  `WMUX_SURFACE_ID` names only the pane that started it — reporting from there
+  would resume pane B's conversation in pane A. Start OpenCode 2 with
+  `--standalone` for the handle to be captured.
+
+---
+
 ## Versioning
 
 The first line of `wmux.js` is a marker:
@@ -96,3 +122,4 @@ neither overwritten nor removed.
 
 [189]: https://github.com/amirlehmam/wmux/issues/189
 [190]: https://github.com/amirlehmam/wmux/issues/190
+[290]: https://github.com/amirlehmam/wmux/issues/290

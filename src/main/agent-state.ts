@@ -31,6 +31,7 @@ import { BrowserWindow } from 'electron';
 import { IPC_CHANNELS, SurfaceId } from '../shared/types';
 import { isValidClaudeSessionId } from './claude-resume';
 import { isValidCodexSessionId } from './codex-resume';
+import { isValidOpencodeSessionId } from './opencode-resume';
 import { resolveWireChoiceId } from '../shared/remote-console-protocol';
 
 export type AgentRunState = 'blocked' | 'working' | 'idle' | 'unknown';
@@ -99,7 +100,7 @@ export interface AgentStateRecord {
   answeredAt: number | null;
   /** Resumable session handle (a file/id), not a PID — survives a restart. */
   sessionId: string | null;
-  sessionProvider?: 'claude' | 'codex';
+  sessionProvider?: AgentSessionProvider;
   /** Session capture alone says nothing about the agent's activity. */
   sessionOnly?: boolean;
   metadata: AgentMetadata;
@@ -440,6 +441,17 @@ export function reportAgent(surfaceId: SurfaceId, params: ReportAgentParams): Ag
   return commit(record);
 }
 
+/** Who a session handle belongs to — it decides the validator and the restore command. */
+export type AgentSessionProvider = 'claude' | 'codex' | 'opencode';
+const SESSION_VALIDATORS: Record<AgentSessionProvider, (id: unknown) => id is string> = {
+  claude: isValidClaudeSessionId,
+  codex: isValidCodexSessionId,
+  opencode: isValidOpencodeSessionId,
+};
+function isSessionProvider(value: unknown): value is AgentSessionProvider {
+  return value === 'claude' || value === 'codex' || value === 'opencode';
+}
+
 /** `pane.report_agent_session` — tie the pane to a resumable session handle. */
 export function reportAgentSession(
   surfaceId: SurfaceId,
@@ -450,14 +462,16 @@ export function reportAgentSession(
   // end up on a restored pane's command line. Anything that is not a bare
   // session handle is stored as null rather than kept for a later caller to
   // sanitise, so there is exactly one place this can be got wrong.
-  if (params.provider !== undefined && params.provider !== 'claude' && params.provider !== 'codex') return null;
-  const valid = params.provider === 'codex' ? isValidCodexSessionId : isValidClaudeSessionId;
-  const sessionId = valid(params.sessionId) ? params.sessionId : null;
-  const sessionOnly = params.provider === 'codex' && !records.has(surfaceId);
+  const requested = params.provider ?? 'claude';
+  if (!isSessionProvider(requested)) return null;
+  const provider: AgentSessionProvider = requested;
+  const sessionId = SESSION_VALIDATORS[provider](params.sessionId) ? params.sessionId : null;
+  // Claude's handle comes with its hooks, which declare state too. Codex's and
+  // OpenCode's arrive on their own, and say nothing about whether it is working.
+  const sessionOnly = provider !== 'claude' && !records.has(surfaceId);
   const record = getOrCreate(surfaceId);
   if (!acceptSeq(record, params.seq)) return null;
   if (sessionOnly) record.sessionOnly = true;
-  const provider = params.provider === 'codex' ? 'codex' : 'claude';
   const changed = record.sessionId !== sessionId || record.sessionProvider !== provider;
   record.sessionId = sessionId;
   record.sessionProvider = provider;
@@ -784,7 +798,7 @@ export interface AgentStateSnapshot {
   /** When an answer was last relayed, so the UI can say "sent" instead of re-offering. */
   answeredAt: number | null;
   sessionId: string | null;
-  sessionProvider?: 'claude' | 'codex';
+  sessionProvider?: AgentSessionProvider;
   runDepth: number;
   metadata: AgentMetadata;
   updatedAt: number;

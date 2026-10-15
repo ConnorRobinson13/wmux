@@ -39,6 +39,14 @@ export interface SurfaceRef {
   type: SurfaceType;
   customTitle?: string;
   /**
+   * The name a TEMPLATE gave this tab — a quick-launch profile's name, a
+   * manifest pane's `title` (#291). Not `customTitle`: that one is a name a
+   * human chose (a rename, `agent spawn --label`) and outranks everything,
+   * while a template name is only the tab's default — a program announcing
+   * its own title (OSC 0/2) takes the label over, the way it does over a cwd.
+   */
+  defaultTitle?: string;
+  /**
    * How this surface was ASKED to start: a bare executable, or a whole command
    * line such as `ssh user@host` (issue #78). Immutable once set — it is what
    * respawns the surface after a restart, so anything that overwrites it with
@@ -78,6 +86,12 @@ export interface SurfaceRef {
   claudeSessionId?: string;
   /** Exact Codex conversation to resume, independently of Claude. */
   codexSessionId?: string;
+  /**
+   * OpenCode session to resume (#290), stamped by `stampOpencodeSessionIds`
+   * from what wmux's OpenCode plugin reported. Restored as `opencode -s <id>`
+   * when `workspacePrefs.restoreOpencodeSessions` is on.
+   */
+  opencodeSessionId?: string;
   /** Initial URL for a browser surface created from a quick-launch profile (issue #32). */
   url?: string;
   /**

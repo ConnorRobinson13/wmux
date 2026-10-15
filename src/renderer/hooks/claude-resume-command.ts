@@ -54,9 +54,22 @@ export function withClaudeResume(opts: {
   enabled: boolean;
   codexSessionId?: string;
   codexEnabled?: boolean;
+  opencodeSessionId?: string;
+  opencodeEnabled?: boolean;
 }): string[] | undefined {
   const { base, surfaceId, claudeSessionId, enabled } = opts;
   if (!surfaceId) return base;
+  if (opts.opencodeSessionId) {
+    // Same rule as Codex: two providers' handles on one tab is a state nothing
+    // wrote on purpose, and guessing would type an agent into another's TUI.
+    if (claudeSessionId || opts.codexSessionId || !opts.opencodeEnabled) return base;
+    // Mirrors OPENCODE_SESSION_ID_RE in src/main/opencode-resume.ts — re-checked
+    // because session.json is a file the user can edit.
+    if (!/^ses_[A-Za-z0-9]{8,120}$/.test(opts.opencodeSessionId)) return base;
+    if (resumedSurfaces.has(surfaceId)) return base;
+    resumedSurfaces.add(surfaceId);
+    return [...(base ?? []), `opencode -s ${opts.opencodeSessionId}`];
+  }
   if (opts.codexSessionId) {
     // Mixed provider state is ambiguous: never type a second agent into a TUI.
     if (claudeSessionId || !opts.codexEnabled || !/^[A-Za-z0-9][A-Za-z0-9_-]{7,127}$/.test(opts.codexSessionId)) return base;

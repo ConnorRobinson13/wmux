@@ -18,6 +18,10 @@ vi.mock('node:child_process', () => ({
     calls.push({ file, argv, opts });
     if (typeof cb === 'function') cb(null, '', '');
   },
+  execFileSync: (file: string, argv: string[], opts: any) => {
+    calls.push({ file, argv, opts });
+    return '';
+  },
 }));
 
 const PLUGIN = path.resolve(__dirname, '../../resources/opencode-plugin/wmux.js');
@@ -67,7 +71,7 @@ describe('the plugin file itself', () => {
   it('carries a version marker, or wmux cannot know to reinstall it', () => {
     // pluginNeedsUpdate() compares this; an install stuck on v4 keeps #191.
     // v5 → v6 is #271: every v5 install is the file OpenCode v2 rejects.
-    expect(src).toMatch(/wmux-plugin-version:\s*6/);
+    expect(src).toMatch(/wmux-plugin-version:\s*7/);
   });
 
   it('exports WmuxPlugin and the default definition, NOTHING else (#191, #271)', async () => {
@@ -536,5 +540,118 @@ describe('shell.env', () => {
     expect(output.env.WMUX_NODE).toBe(process.env.WMUX_NODE);
     expect(output.env.WMUX_NODE_ELECTRON).toBe('1');
     expect(output.env.WMUX_SURFACE_ID).toBe(SURFACE);
+  });
+});
+
+describe('session handle for restore (#290)', () => {
+  // Real ids and shapes, captured from opencode-ai 1.18.35 and @opencode/cli
+  // 2.0.24 running a task subagent.
+  const PARENT = 'ses_ebee54158ffe0s9gKyn9y27AJz';
+  const CHILD = 'ses_ebee52e87ffevI7qoPYR1XlB05';
+  const reports = () => verbs().filter((v) => v[0] === 'report-session' || v[0] === 'release-agent');
+
+  /** Run with process.once('exit') captured, so the exit release can be fired by hand. */
+  async function withExitHook<T>(fn: (fireExit: () => void) => Promise<T>): Promise<T> {
+    const listeners: Array<() => void> = [];
+    const spy = vi.spyOn(process, 'once').mockImplementation(((event: string, l: () => void) => {
+      if (event === 'exit') listeners.push(l);
+      return process;
+    }) as any);
+    try {
+      return await fn(() => listeners.forEach((l) => l()));
+    } finally {
+      spy.mockRestore();
+    }
+  }
+
+  it('reports the top-level session once and never a v1 subagent', async () => {
+    await withExitHook(async () => {
+      const hooks = await pluginWith();
+      await hooks.event({ event: { type: 'session.created', properties: { sessionID: PARENT, info: { id: PARENT } } } });
+      await hooks.event({ event: { type: 'message.updated', properties: { sessionID: PARENT, info: { sessionID: PARENT, parentID: 'msg_1411a6db00015oeUxf8Sfku2Ak' } } } });
+      await hooks.event({ event: { type: 'session.created', properties: { sessionID: CHILD, info: { id: CHILD, parentID: PARENT } } } });
+      await hooks.event({ event: { type: 'session.status', properties: { sessionID: CHILD, status: { type: 'busy' } } } });
+      await hooks.event({ event: { type: 'session.idle', properties: { sessionID: PARENT } } });
+      expect(reports()).toEqual([['report-session', PARENT, '--provider', 'opencode', '--surface', SURFACE]]);
+    });
+  });
+
+  it('follows the user to another top-level session', async () => {
+    await withExitHook(async () => {
+      const hooks = await pluginWith();
+      const OTHER = 'ses_ebee49dd7ffeliSGc2ATav2wlN';
+      await hooks.event({ event: { type: 'session.status', properties: { sessionID: PARENT, status: {} } } });
+      await hooks.event({ event: { type: 'session.status', properties: { sessionID: OTHER, status: {} } } });
+      expect(reports().map((r) => r[1])).toEqual([PARENT, OTHER]);
+    });
+  });
+
+  it('reads v2 flat session.created, including its parentID', async () => {
+    await withExitHook(async () => {
+      const { push, cleanup } = await v2PluginWith();
+      await push({ type: 'session.created', data: { sessionID: PARENT, projectID: 'p' } });
+      await push({ type: 'session.inbox.enqueued', data: { sessionID: PARENT, inboxID: 'msg_x' } });
+      await push({ type: 'session.created', data: { sessionID: CHILD, parentID: PARENT } });
+      await push({ type: 'session.execution.started', data: { sessionID: CHILD } });
+      expect(reports()).toEqual([['report-session', PARENT, '--provider', 'opencode', '--surface', SURFACE]]);
+      await cleanup();
+    });
+  });
+
+  it('releases the handle on exit, synchronously, and on deletion', async () => {
+    await withExitHook(async (fireExit) => {
+      const hooks = await pluginWith();
+      await hooks.event({ event: { type: 'session.idle', properties: { sessionID: PARENT } } });
+      calls.length = 0;
+      fireExit();
+      expect(reports()).toEqual([['release-agent', '--provider', 'opencode', '--session', PARENT, '--surface', SURFACE]]);
+      expect(calls[0].opts.timeout).toBeGreaterThan(0);
+    });
+    await withExitHook(async (fireExit) => {
+      const hooks = await pluginWith();
+      await hooks.event({ event: { type: 'session.idle', properties: { sessionID: PARENT } } });
+      await hooks.event({ event: { type: 'session.deleted', properties: { sessionID: PARENT, info: { id: PARENT } } } });
+      calls.length = 0;
+      fireExit();
+      expect(reports()).toEqual([]);
+    });
+  });
+
+  it("reports nothing from OpenCode 2's shared background server", async () => {
+    // `opencode serve --service` hosts every pane's sessions; its
+    // WMUX_SURFACE_ID is just the pane that started it.
+    const argv = process.argv;
+    process.argv = [...argv, 'serve', '--service'];
+    try {
+      await withExitHook(async () => {
+        const hooks = await pluginWith();
+        await hooks.event({ event: { type: 'session.idle', properties: { sessionID: PARENT } } });
+        expect(reports()).toEqual([]);
+      });
+    } finally {
+      process.argv = argv;
+    }
+  });
+
+  it('releases on v2 dispose, once even if exit follows', async () => {
+    await withExitHook(async (fireExit) => {
+      const { push, cleanup } = await v2PluginWith();
+      await push({ type: 'session.execution.started', data: { sessionID: PARENT } });
+      calls.length = 0;
+      await cleanup();
+      fireExit();
+      expect(reports()).toEqual([['release-agent', '--provider', 'opencode', '--session', PARENT, '--surface', SURFACE]]);
+    });
+  });
+
+  it('ignores anything that is not an OpenCode session id', async () => {
+    const { sessionFacts } = await internals();
+    expect(sessionFacts({ type: 'message.updated', properties: { info: { sessionID: PARENT, parentID: 'msg_1' } } })).toEqual({ id: PARENT, child: false });
+    await withExitHook(async () => {
+      const hooks = await pluginWith();
+      await hooks.event({ event: { type: 'session.idle', properties: { sessionID: '; rm -rf /' } } });
+      await hooks.event({ event: { type: 'session.idle', properties: { sessionID: 's' } } });
+      expect(reports()).toEqual([]);
+    });
   });
 });

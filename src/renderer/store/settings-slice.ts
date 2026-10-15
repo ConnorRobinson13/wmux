@@ -518,6 +518,12 @@ export interface WorkspacePrefs {
   /** Opt-in capture and restoration of each tab's exact Codex conversation. */
   restoreCodexSessions: boolean;
   /**
+   * Opt-in: reopen each tab's OpenCode session with `opencode -s <id>` (#290).
+   * Off by default for the same reason as Claude — every such pane starts an
+   * agent at once.
+   */
+  restoreOpencodeSessions: boolean;
+  /**
    * How many terminal panes a new workspace opens with, and how they sit
    * (issue #212).
    *
@@ -568,6 +574,7 @@ export const DEFAULT_WORKSPACE_PREFS: WorkspacePrefs = {
   defaultLayoutId: null,
   restoreClaudeSessions: false,
   restoreCodexSessions: false,
+  restoreOpencodeSessions: false,
   detectAgentScreens: true,
   newWorkspacePanes: 3,
   newWorkspaceLayout: 'grid',

@@ -1,17 +1,29 @@
 import { getAgentState, wasAgentReleased } from './agent-state';
 import { stampClaudeSessionIds } from './claude-resume';
 import { stampCodexSessionIds } from './codex-resume';
+import { stampOpencodeSessionIds } from './opencode-resume';
+import type { SurfaceId } from '../shared/types';
+
+/**
+ * The handle a non-Claude provider keeps on save. Its own report wins; another
+ * provider's report, or a deliberate exit, clears it; and silence keeps it — a
+ * restored agent has not reported yet, and that is its recovery handle.
+ */
+function providerLookup(provider: 'codex' | 'opencode') {
+  return (id: SurfaceId): string | null | undefined => {
+    const agent = getAgentState(id);
+    if (agent?.sessionProvider === provider) return agent.sessionId;
+    if (agent?.sessionId || wasAgentReleased(id)) return null;
+    return undefined;
+  };
+}
 
 export function stampAgentSessionIds<T>(tree: T): T {
   const claude = stampClaudeSessionIds(tree, id => {
     const agent = getAgentState(id);
-    return agent?.sessionProvider === 'codex' ? null : agent?.sessionId;
+    // An absent provider is Claude: that is what every report before #261 meant.
+    return agent?.sessionProvider && agent.sessionProvider !== 'claude' ? null : agent?.sessionId;
   });
-  return stampCodexSessionIds(claude, id => {
-    const agent = getAgentState(id);
-    if (agent?.sessionProvider === 'codex') return agent.sessionId;
-    if (agent?.sessionId || wasAgentReleased(id)) return null;
-    // A restored Codex has not reported yet. Keep its recovery handle.
-    return undefined;
-  });
+  const codex = stampCodexSessionIds(claude, providerLookup('codex'));
+  return stampOpencodeSessionIds(codex, providerLookup('opencode'));
 }

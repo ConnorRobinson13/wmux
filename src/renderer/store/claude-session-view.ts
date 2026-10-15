@@ -94,6 +94,7 @@ interface SurfaceEntry {
   paneId: PaneId;
   currentCwd?: string;
   customTitle?: string;
+  defaultTitle?: string;
 }
 
 function collectTerminalSurfaces(tree: SplitNode, out: SurfaceEntry[]): void {
@@ -104,6 +105,7 @@ function collectTerminalSurfaces(tree: SplitNode, out: SurfaceEntry[]): void {
         paneId: tree.paneId,
         currentCwd: (s as { currentCwd?: string }).currentCwd,
         customTitle: s.customTitle,
+        defaultTitle: s.defaultTitle,
       });
     }
     return;
@@ -192,7 +194,7 @@ export function claudeSessionsForWorkspace(
   let blocked = 0;
   let oldestBlockedSince: number | null = null;
 
-  for (const { surfaceId, paneId, currentCwd, customTitle } of surfaces) {
+  for (const { surfaceId, paneId, currentCwd, customTitle, defaultTitle } of surfaces) {
     const hook = hookActivity[surfaceId];
     const observed = claudeActivity[surfaceId];
     const declared = agentStates[surfaceId];
@@ -207,7 +209,8 @@ export function claudeSessionsForWorkspace(
       surfaceId,
       paneId,
       // User-set tab title wins (rename must reflect here); cwd folder second.
-      label: customTitle ?? cwdBasename(currentCwd) ?? detection?.agent ?? 'Agent',
+      // A profile/manifest name (#291) is a default, but still a better one than the folder.
+      label: customTitle ?? defaultTitle ?? cwdBasename(currentCwd) ?? detection?.agent ?? 'Agent',
       ...activity,
       backgroundShells: runningBackgroundShells(observed, now),
       skill: observed?.activeSkill ?? null,

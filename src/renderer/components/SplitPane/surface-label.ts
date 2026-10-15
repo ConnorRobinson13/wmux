@@ -31,6 +31,12 @@ function cwdFolderName(cwd: string): string | null {
  *   chose — an explicit `rename-surface` and an `agent spawn --label` — and
  *   above the cwd: it only fills the gap where the tab had no name of its own
  *   but the program in it has been announcing one all along.
+ *
+ *   Also above `defaultTitle`, a quick-launch profile's or manifest pane's name
+ *   (#291). Those used to be written into `customTitle` and so inherited the
+ *   human-chosen rank: a profile named `opencode` kept reading `opencode` while
+ *   opencode itself was announcing `OC | <session title>`. A template name is
+ *   what the tab is called until its program says otherwise.
  */
 export function getSurfaceLabel(
   surface: SurfaceRef,
@@ -41,6 +47,9 @@ export function getSurfaceLabel(
 ): string {
   if (surface.customTitle) return surface.customTitle;
   if (agentLabel) return agentLabel;
+  // Only a terminal has a program that can announce a title of its own, so
+  // anywhere else a profile's name keeps the rank it always had.
+  if (surface.type !== 'terminal' && surface.defaultTitle) return surface.defaultTitle;
 
   switch (surface.type) {
     case 'terminal': {
@@ -49,6 +58,7 @@ export function getSurfaceLabel(
       // arriving for it means something is confused, and the static label is
       // the answer that cannot be wrong.
       if (oscTitle) return oscTitle;
+      if (surface.defaultTitle) return surface.defaultTitle;
       const folder = surface.currentCwd ? cwdFolderName(surface.currentCwd) : null;
       if (folder) return folder;
       // resolvedShell first: it is the concrete executable, so it labels a
@@ -125,6 +135,9 @@ function getInitialSurfaceLabel(
   t: Translate,
 ): { label: string; named: boolean } {
   if (surface.customTitle) return { label: surface.customTitle, named: true };
+  // No OSC title exists before the pane does, so a template's name is the best
+  // seed there is — better than the folder it happens to open in.
+  if (surface.defaultTitle) return { label: surface.defaultTitle, named: true };
 
   switch (surface.type) {
     case 'terminal': {

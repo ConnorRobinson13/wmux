@@ -159,3 +159,27 @@ describe('window titles as tab labels (issue #221)', () => {
     ).toBe('Browser');
   });
 });
+
+describe('template names yield to the program (issue #291)', () => {
+  it('lets the OSC title take over a quick-launch profile name', () => {
+    // The reporter's case: a profile named `opencode`, and opencode writing
+    // `OC | <session title>` the moment it opens a session.
+    const tab = surface('surf-1', { defaultTitle: 'opencode', currentCwd: 'C:\repos\wmux' });
+    expect(getSurfaceLabel(tab, undefined, undefined, undefined, 'OC | Fix the tab labels')).toBe('OC | Fix the tab labels');
+  });
+
+  it('shows the profile name, not the folder, until the program sets a title', () => {
+    const tab = surface('surf-1', { defaultTitle: 'opencode', currentCwd: 'C:\repos\wmux' });
+    expect(getSurfaceLabel(tab, undefined, undefined, undefined, undefined)).toBe('opencode');
+  });
+
+  it('still ranks an explicit rename and an agent label above both', () => {
+    const tab = surface('surf-1', { defaultTitle: 'opencode', customTitle: 'mine' });
+    expect(getSurfaceLabel(tab, undefined, undefined, undefined, 'OC | x')).toBe('mine');
+    expect(getSurfaceLabel(surface('surf-1', { defaultTitle: 'opencode' }), 'reviewer', undefined, undefined, 'OC | x')).toBe('reviewer');
+  });
+
+  it('keeps a profile name on a non-terminal tab', () => {
+    expect(getSurfaceLabel(surface('surf-b', { type: 'browser', defaultTitle: 'Docs' }))).toBe('Docs');
+  });
+});

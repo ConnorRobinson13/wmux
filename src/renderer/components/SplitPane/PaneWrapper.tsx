@@ -269,6 +269,7 @@ export default function PaneWrapper({
               env={surface.env}
               claudeSessionId={surface.claudeSessionId}
               codexSessionId={surface.codexSessionId}
+              opencodeSessionId={surface.opencodeSessionId}
               focused={isFocused && isActive}
               visible={isVisible}
               showFindBar={findBarVisible && isFocused && isActive}
@@ -424,7 +425,9 @@ export default function PaneWrapper({
       return trimmedBase + '\\' + rel;
     };
     addSurface(activeWorkspaceId, paneId, profile.type, {
-      customTitle: profile.name,
+      // The profile's name is the tab's DEFAULT, not a rename (#291): a program
+      // that sets its own window title takes the label over.
+      defaultTitle: profile.name,
       shell: profile.shell,
       cwd: resolveCwd(profile.cwd),
       startupCommands: profile.startupCommands,

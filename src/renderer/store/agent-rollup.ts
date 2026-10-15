@@ -144,6 +144,7 @@ interface SurfaceEntry {
   paneId: PaneId;
   currentCwd?: string;
   customTitle?: string;
+  defaultTitle?: string;
 }
 
 function collectSurfaces(tree: SplitNode, out: SurfaceEntry[]): void {
@@ -154,6 +155,7 @@ function collectSurfaces(tree: SplitNode, out: SurfaceEntry[]): void {
         paneId: tree.paneId,
         currentCwd: (s as { currentCwd?: string }).currentCwd,
         customTitle: s.customTitle,
+        defaultTitle: s.defaultTitle,
       });
     }
     return;
@@ -228,7 +230,7 @@ function rosterEntryFor(
     // "myproj / myproj / myproj" identifies nothing, "claude / codex / claude"
     // is the distinction the user is looking at the list to make. A hand-set tab
     // title still wins over both — it is the only label the user chose.
-    label: surface.customTitle ?? kind ?? cwdBasename(surface.currentCwd) ?? 'Agent',
+    label: surface.customTitle ?? kind ?? surface.defaultTitle ?? cwdBasename(surface.currentCwd) ?? 'Agent',
     state,
     blockedReason: blocked ? (declared?.blockedReason ?? null) : null,
     choices,

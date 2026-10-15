@@ -240,6 +240,14 @@ const HANDLERS: Record<string, (surfaceId: SurfaceId, p: any) => any> = {
     if (current?.sessionProvider !== 'codex' || current.sessionId !== p.sessionId) return { released: false };
     return { released: releaseAgent(surfaceId) };
   },
+  // OpenCode exited (#290): forget its handle, so restore gives back a shell.
+  // Same guard as Codex — only the session the pane still holds, so a late
+  // exit cannot take the NEXT session in the same tab with it.
+  'pane.release_opencode_session': (surfaceId, p) => {
+    const current = getAgentState(surfaceId);
+    if (current?.sessionProvider !== 'opencode' || current.sessionId !== p.sessionId) return { released: false };
+    return { released: releaseAgent(surfaceId) };
+  },
 
   'pane.report_metadata': (surfaceId, p) => ({
     accepted: !!reportMetadata(surfaceId, {

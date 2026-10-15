@@ -22,6 +22,8 @@ interface TerminalPaneProps {
   claudeSessionId?: string;
   /** Exact Codex conversation to resume, independently of Claude. */
   codexSessionId?: string;
+  /** OpenCode session to resume on a restored pane (#290). */
+  opencodeSessionId?: string;
   focused?: boolean;
   visible?: boolean;
   showFindBar?: boolean;
@@ -38,13 +40,14 @@ export default function TerminalPane({
   env,
   claudeSessionId,
   codexSessionId,
+  opencodeSessionId,
   focused = true,
   visible = true,
   showFindBar = false,
   onFindBarClose,
   copyModeActive = false,
 }: TerminalPaneProps) {
-  const { terminalRef, searchAddonRef, xtermRef } = useTerminal({ surfaceId, shell, cwd, visible, focused, colorScheme, startupCommands, env, claudeSessionId, codexSessionId });
+  const { terminalRef, searchAddonRef, xtermRef } = useTerminal({ surfaceId, shell, cwd, visible, focused, colorScheme, startupCommands, env, claudeSessionId, codexSessionId, opencodeSessionId });
 
   const [_lastQuery, setLastQuery] = useState('');
 

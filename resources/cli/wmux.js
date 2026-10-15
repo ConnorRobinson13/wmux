@@ -1846,6 +1846,12 @@ const AGENT_STATE_COMMANDS = {
     'answer-agent': cmdAnswerAgent,
     'release-agent': async (args) => {
         const surfaceId = reportingSurface(args, 'release-agent');
+        // OpenCode's plugin releases only the session it reported (#290): main
+        // refuses it while quitting, and when the pane already holds a newer one.
+        if (getFlag(args, '--provider') === 'opencode') {
+            print(await sendV2('pane.release_opencode_session', { surfaceId, sessionId: getFlag(args, '--session') ?? null }));
+            return;
+        }
         print(await sendV2('pane.release_agent', { surfaceId, seq: seqFlag(args) }));
     },
     // No --surface → the whole picture, including a `blocked` list that answers
@@ -2098,7 +2104,7 @@ const COMMAND_SPECS = {
         bool: ['--done'],
     },
     'report-session': {
-        usage: `wmux report-session <sessionId> [--provider claude|codex] [--seq N] [--surface <id>]   ${SURFACE_NOTE}`,
+        usage: `wmux report-session <sessionId> [--provider claude|codex|opencode] [--seq N] [--surface <id>]   ${SURFACE_NOTE}`,
         value: ['--session', '--provider', '--seq', '--surface'],
     },
     'answer-agent': {
@@ -2106,8 +2112,8 @@ const COMMAND_SPECS = {
         value: ['--surface', '--choice'],
     },
     'release-agent': {
-        usage: `wmux release-agent [--seq N] [--surface <id>]   ${SURFACE_NOTE}`,
-        value: ['--seq', '--surface'],
+        usage: `wmux release-agent [--seq N] [--surface <id>] | --provider opencode --session <id>   ${SURFACE_NOTE}`,
+        value: ['--seq', '--surface', '--provider', '--session'],
     },
     'agent-state': {
         usage: 'wmux agent-state [--surface <id>]   (no --surface → every pane, the blocked list, and every identified agent)',

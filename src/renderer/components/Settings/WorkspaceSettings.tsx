@@ -299,6 +299,19 @@ export default function WorkspaceSettings() {
       </p>
 
       <div className="settings-row">
+        <label className="settings-label">{t('settings.workspacePanel.restoreOpencodeSessions', 'Resume OpenCode sessions on restore')}</label>
+        <input
+          type="checkbox"
+          className="settings-toggle"
+          checked={workspacePrefs.restoreOpencodeSessions}
+          onChange={(e) => setWorkspacePrefs({ restoreOpencodeSessions: e.target.checked })}
+        />
+      </div>
+      <p className="settings-hint">
+        {t('settings.workspacePanel.restoreOpencodeSessionsHint', "Reopens each restored tab's OpenCode session with `opencode -s`, in the directory it was in. Needs the wmux OpenCode plugin (Agent integration on). An OpenCode you quit normally is not reopened. If a session was deleted since, OpenCode starts a new one instead. OpenCode 2 is captured only when started with --standalone: its shared background server cannot tell tabs apart.")}
+      </p>
+
+      <div className="settings-row">
         <label className="settings-label">{t('settings.workspacePanel.detectAgentScreens', 'Read agent screens to infer state')}</label>
         <input
           type="checkbox"

@@ -1,8 +1,8 @@
-// wmux-plugin-version: 6
+// wmux-plugin-version: 7
 // wmux OpenCode plugin — bridges OpenCode hooks/events to the wmux sidebar.
 // Auto-installed by wmux to ~/.config/opencode/plugin/wmux.js.
 // No-ops entirely outside wmux (WMUX !== '1').
-import { execFile } from "node:child_process";
+import { execFile, execFileSync } from "node:child_process";
 import { appendFileSync, existsSync } from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
@@ -164,6 +164,37 @@ function askReason(event) {
     : "Waiting for your answer";
 }
 
+/** Mirrors OPENCODE_SESSION_ID_RE in wmux's src/main/opencode-resume.ts. */
+const SESSION_ID_RE = /^ses_[A-Za-z0-9]{8,120}$/;
+
+/**
+ * What an event says about sessions (#290): the session it concerns, and — for
+ * the events that describe a session itself — whether that session is a
+ * subagent's. Shapes verified against real builds:
+ *
+ * - v1 (opencode-ai 1.18.35): `session.created`/`session.updated` carry the
+ *   session in `properties.info`, with `info.parentID` set on a task subagent.
+ *   Every other event names its session in `properties.sessionID`.
+ * - v2 (@opencode/cli 2.0.24): `session.created` is FLAT — `data.sessionID`,
+ *   `data.parentID` — and there is no `session.updated`.
+ *
+ * `parentID` is read ONLY off those events. On `message.updated`,
+ * `info.parentID` is the parent MESSAGE (`msg_…`), and reading it as a session
+ * parent would file the user's own conversation as a subagent.
+ */
+function sessionFacts(event) {
+  if (!event || typeof event.type !== "string") return null;
+  const p = event.properties || {};
+  const info = p.info && typeof p.info === "object" ? p.info : null;
+  if (event.type === "session.created" || event.type === "session.updated" || event.type === "session.deleted") {
+    const id = (info && info.id) || p.sessionID;
+    const parentID = info ? info.parentID : p.parentID;
+    return typeof id === "string" ? { id, child: typeof parentID === "string" && !!parentID } : null;
+  }
+  const id = p.sessionID || (info && info.sessionID);
+  return typeof id === "string" ? { id, child: false } : null;
+}
+
 export const WmuxPlugin = async () => {
   // Resolved before the WMUX gate so "the plugin loaded but did nothing" is
   // itself a visible log line — otherwise the commonest failure is silence.
@@ -183,28 +214,31 @@ export const WmuxPlugin = async () => {
     pid: process.pid,
   });
 
+  /** How to run the wmux CLI with `args`, or null when it cannot be run. */
+  function cliCommand(args) {
+    const cli = process.env.WMUX_CLI;
+    const opts = { windowsHide: true };
+    if (cli) {
+      // wmux's own Electron binary is Node only with this set; without it the
+      // same exe opens a second wmux window.
+      if (runtime.electron) opts.env = { ...process.env, ELECTRON_RUN_AS_NODE: "1" };
+      return { file: runtime.file, argv: [cli, ...args], opts };
+    }
+    // The PATH shim is `wmux.cmd`, which execFile cannot spawn without a
+    // shell. Nothing to do — WMUX_CLI is always set alongside WMUX=1.
+    if (process.platform === "win32") return null;
+    return { file: "wmux", argv: args, opts };
+  }
+
   function wmux(args) {
     // Fire-and-forget; never block or throw into OpenCode.
     try {
-      const cli = process.env.WMUX_CLI;
-      const opts = { windowsHide: true };
-      let file;
-      let argv;
-      if (cli) {
-        file = runtime.file;
-        argv = [cli, ...args];
-        // wmux's own Electron binary is Node only with this set; without it the
-        // same exe opens a second wmux window.
-        if (runtime.electron) opts.env = { ...process.env, ELECTRON_RUN_AS_NODE: "1" };
-      } else if (process.platform === "win32") {
-        // The PATH shim is `wmux.cmd`, which execFile cannot spawn without a
-        // shell. Nothing to do — WMUX_CLI is always set alongside WMUX=1.
+      const command = cliCommand(args);
+      if (!command) {
         log("cli: skipped (no WMUX_CLI on win32)", args);
         return;
-      } else {
-        file = "wmux";
-        argv = args;
       }
+      const { file, argv, opts } = command;
       log("cli", args);
       execFile(file, argv, opts, (err, _stdout, stderr) => {
         // v2 passed `() => {}` here, which is how #187 stayed silent for a
@@ -254,6 +288,75 @@ export const WmuxPlugin = async () => {
     clearBlocked();
     ping();
   };
+  /**
+   * The tab's conversation, for "Resume OpenCode sessions on restore" (#290).
+   *
+   * The session a pane is about is the last TOP-LEVEL session anything happened
+   * in. A task subagent is its own session, firing the same events on the same
+   * pane, and resuming one would bring back a "reply with pong" instead of the
+   * user's conversation — so every session born with a parent is remembered as
+   * a child and never reported. Its `session.created` arrives before any of its
+   * other events, in both generations (verified on 1.18.35 and 2.0.24).
+   */
+  const childSessions = new Set();
+  let reportedSession = null;
+  let exitHookArmed = false;
+  const releaseSession = (id, sync) => {
+    const args = ["release-agent", "--provider", "opencode", "--session", id, "--surface", surface];
+    if (!sync) {
+      wmux(args);
+      return;
+    }
+    // Synchronous on exit: an async spawn would die with the process. Bounded,
+    // because nothing is worth holding OpenCode's exit for. While wmux itself
+    // is quitting, main refuses this — a killed pane did not choose to leave.
+    try {
+      const command = cliCommand(args);
+      if (command) execFileSync(command.file, command.argv, { ...command.opts, timeout: 1500, stdio: "ignore" });
+    } catch {}
+  };
+  // OpenCode 2 runs one background server (`opencode serve --service`) for
+  // every TUI on the machine, and plugins live in it — so this process sees
+  // every pane's sessions while its WMUX_SURFACE_ID names only the pane that
+  // happened to start the server. Reporting from there would resume pane B's
+  // conversation in pane A. A private server (`--standalone`, or any v1) is
+  // one pane's, and is the only place a handle is attributable.
+  const sharedServer = process.argv.includes("--service");
+  if (sharedServer) log("session: shared server, handles not reported");
+  const noteSession = (event) => {
+    if (sharedServer) return;
+    const facts = sessionFacts(event);
+    if (!facts || !SESSION_ID_RE.test(facts.id)) return;
+    if (facts.child) {
+      childSessions.add(facts.id);
+      return;
+    }
+    if (event.type === "session.deleted") {
+      // Resuming a deleted id makes OpenCode start an empty session instead.
+      if (facts.id === reportedSession) {
+        reportedSession = null;
+        releaseSession(facts.id, false);
+      }
+      return;
+    }
+    if (childSessions.has(facts.id) || facts.id === reportedSession) return;
+    reportedSession = facts.id;
+    wmux(["report-session", facts.id, "--provider", "opencode", "--surface", surface]);
+    if (!exitHookArmed) {
+      exitHookArmed = true;
+      // Quitting OpenCode is choosing to end the conversation: forget it, so a
+      // restore gives back the shell rather than relaunching OpenCode.
+      process.once("exit", releaseOnShutdown);
+    }
+  };
+  /** Idempotent: v2 disposes the plugin AND exits, and only one may release. */
+  function releaseOnShutdown() {
+    if (!reportedSession) return;
+    const id = reportedSession;
+    reportedSession = null;
+    releaseSession(id, true);
+  }
+
   const activeTool = (input) => {
     log("tool", { tool: input && input.tool, blocked });
     clearBlocked();
@@ -263,7 +366,7 @@ export const WmuxPlugin = async () => {
     wmux(args);
   };
 
-  return {
+  const hooks = {
     "tool.execute.after": async (input) => {
       const tool = String((input && input.tool) || "");
       if (tool) wmux(["hook", "--event", "PostToolUse", "--tool", tool]);
@@ -272,7 +375,10 @@ export const WmuxPlugin = async () => {
     "tool.execute.before": async (input) => {
       activeTool(input);
     },
-    event: async ({ event }) => {
+    // `sessionSource` is v2's raw event (see setupV2): the session facts live
+    // on events it has no other use for, which `fromV2Event` maps to null.
+    event: async ({ event, sessionSource }) => {
+      noteSession(sessionSource || event);
       if (!event || !event.type) return;
       const type = event.type;
       log("event", { type, properties: event.properties });
@@ -323,6 +429,10 @@ export const WmuxPlugin = async () => {
       if (process.env.WMUX_NODE_ELECTRON) output.env.WMUX_NODE_ELECTRON = process.env.WMUX_NODE_ELECTRON;
     },
   };
+  // For v2's dispose (setupV2). Non-enumerable, so a loader walking the hooks
+  // object never mistakes it for a hook.
+  Object.defineProperty(hooks, "__wmuxShutdown", { value: releaseOnShutdown });
+  return hooks;
 };
 
 /**
@@ -412,8 +522,10 @@ async function setupV2(ctx) {
     }
     for await (const raw of subscribe.call(ctx.event, { signal: controller.signal })) {
       const event = fromV2Event(raw);
-      if (event) await hooks.event({ event });
-      else log("v2: unmapped event", raw && raw.type);
+      if (!event) log("v2: unmapped event", raw && raw.type);
+      const sessionSource =
+        raw && typeof raw.type === "string" ? { type: raw.type, properties: raw.data || raw.properties || {} } : null;
+      await hooks.event({ event, sessionSource });
     }
   })().catch((err) => {
     if (!controller.signal.aborted) log("v2: event stream ended", (err && err.message) || String(err));
@@ -422,6 +534,8 @@ async function setupV2(ctx) {
   return async () => {
     controller.abort();
     await task;
+    // v2 disposes plugins on shutdown, where `exit` may never run for them.
+    if (typeof hooks.__wmuxShutdown === "function") hooks.__wmuxShutdown();
     for (const r of registrations) {
       try {
         if (r && typeof r.dispose === "function") await r.dispose();
@@ -459,4 +573,4 @@ export default { id: "wmux", server: WmuxPlugin, setup: setupV2 };
  * `WmuxPlugin` and the default definition must stay the only exports in this
  * file. A test asserts it.
  */
-WmuxPlugin.__wmuxInternals = { resolveNodeRuntime, resolveDebugLog, summarize, askReason, fromV2Event };
+WmuxPlugin.__wmuxInternals = { resolveNodeRuntime, resolveDebugLog, summarize, askReason, fromV2Event, sessionFacts };

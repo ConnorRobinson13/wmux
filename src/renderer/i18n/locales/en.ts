@@ -571,6 +571,8 @@ export const en = {
   'settings.workspacePanel.sessionSnapshotHint':
     'Keeps the last three layouts that were different, as "Auto-save …" entries under Load session — so a pane closed by mistake, or by an agent, can be brought back. Only a layout that actually changed uses a slot, so an idle machine keeps its history.',
   'settings.workspacePanel.restoreCodexSessions': "Resume Codex sessions on restore",
+  'settings.workspacePanel.restoreOpencodeSessions': "Resume OpenCode sessions on restore",
+  'settings.workspacePanel.restoreOpencodeSessionsHint': "Reopens each restored tab's OpenCode session with `opencode -s`, in the directory it was in. Needs the wmux OpenCode plugin (Agent integration on). An OpenCode you quit normally is not reopened. If a session was deleted since, OpenCode starts a new one instead. OpenCode 2 is captured only when started with --standalone: its shared background server cannot tell tabs apart.",
   'settings.workspacePanel.restoreCodexSessionsHint': "Reopens the exact Codex conversation in each restored tab. Enable this, then launch codex in a new wmux terminal. Requires Node.js and the native Windows Codex CLI in PowerShell or Command Prompt. Sessions you exit normally are not reopened.",
   'settings.workspacePanel.restoreClaudeSessions': 'Resume Claude Code sessions on restore',
   'settings.workspacePanel.restoreClaudeSessionsHint': 'When wmux restores a session, re-launch each terminal that was running Claude Code with `claude --resume`, in the directory it was in. Off by default: every such pane starts an agent at once. Panes whose conversation Claude no longer has are skipped, and a Claude you exited cleanly is not resumed.',

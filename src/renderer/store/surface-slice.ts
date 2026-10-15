@@ -65,6 +65,8 @@ export interface SurfaceSlice {
     options?: {
       colorScheme?: string;
       customTitle?: string;
+      /** A template's name for the tab (#291) — yields to a program's OSC title. */
+      defaultTitle?: string;
       shell?: string;
       cwd?: string;
       startupCommands?: string[];
@@ -261,6 +263,7 @@ interface ClosedSurface {
   type: SurfaceType;
   colorScheme?: string;
   customTitle?: string;
+  defaultTitle?: string;
   shell?: string;
   cwd?: string;
   startupCommands?: string[];
@@ -315,6 +318,7 @@ function pushClosedSurface(workspaceId: WorkspaceId, surface: SurfaceRef): void 
     type: surface.type,
     colorScheme: surface.colorScheme,
     customTitle: surface.customTitle,
+    defaultTitle: surface.defaultTitle,
     shell: surface.shell,
     cwd: surface.cwd,
     startupCommands: surface.startupCommands,
@@ -366,6 +370,7 @@ export const createSurfaceSlice: StateCreator<SliceState, [], [], SurfaceSlice> 
       type,
       ...(options?.colorScheme ? { colorScheme: options.colorScheme } : {}),
       ...(options?.customTitle ? { customTitle: options.customTitle } : {}),
+      ...(options?.defaultTitle ? { defaultTitle: options.defaultTitle } : {}),
       ...(options?.shell ? { shell: options.shell } : {}),
       ...(options?.cwd ? { cwd: options.cwd } : {}),
       ...(options?.startupCommands?.length ? { startupCommands: options.startupCommands } : {}),
@@ -659,6 +664,7 @@ export const createSurfaceSlice: StateCreator<SliceState, [], [], SurfaceSlice> 
     const reopenedId = addSurface(workspaceId, paneId, restored.type, {
       ...(restored.colorScheme ? { colorScheme: restored.colorScheme } : {}),
       ...(restored.customTitle ? { customTitle: restored.customTitle } : {}),
+      ...(restored.defaultTitle ? { defaultTitle: restored.defaultTitle } : {}),
       ...(restored.shell ? { shell: restored.shell } : {}),
       ...(restored.cwd ? { cwd: restored.cwd } : {}),
       ...(restored.startupCommands ? { startupCommands: restored.startupCommands } : {}),

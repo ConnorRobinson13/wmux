@@ -42,7 +42,8 @@ export function buildManifestTree(spec: ManifestWorkspaceSpec): { tree: SplitNod
         id,
         type: 'terminal',
         cwd: pane.cwd,
-        customTitle: pane.title,
+        // A default, like a profile name (#291) — the program's OSC title wins.
+        ...(pane.title ? { defaultTitle: pane.title } : {}),
         ...(Object.keys(pane.env).length ? { env: pane.env } : {}),
       };
       return { ...leaf, surfaces: [surface], activeSurfaceIndex: 0 };
@@ -84,7 +85,7 @@ export function describeWorkspaceTree(tree: SplitNode, findLeafOf: (paneId: stri
     const terminal = active?.type === 'terminal' ? active : leaf.surfaces.find((s) => s.type === 'terminal');
     if (!terminal) continue;
     panes.push({
-      title: terminal.customTitle,
+      title: terminal.customTitle ?? terminal.defaultTitle,
       cwd: terminal.currentCwd ?? terminal.cwd,
       startupCommands: terminal.startupCommands,
       env: terminal.env,
