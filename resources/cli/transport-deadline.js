@@ -16,6 +16,7 @@
  */
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.SLOW_TRANSPORT_FLOOR_MS = exports.DEFAULT_V2_TIMEOUT_MS = void 0;
+exports.isWslHost = isWslHost;
 exports.usesNpiperelay = usesNpiperelay;
 exports.isSlowTransport = isSlowTransport;
 exports.transportDeadline = transportDeadline;
@@ -43,6 +44,21 @@ exports.DEFAULT_V2_TIMEOUT_MS = 5000;
  */
 exports.SLOW_TRANSPORT_FLOOR_MS = 30000;
 /**
+ * Is this process running INSIDE a WSL distro (#288)?
+ *
+ * The env vars alone cannot say: Windows Terminal exports
+ * `WSLENV=WT_SESSION:WT_PROFILE_ID:` to EVERY process it starts, WSL or not, so
+ * a native Windows `wmux ping` from a Windows Terminal tab took the npiperelay
+ * branch and failed with "npiperelay.exe not found" — and an agent outside
+ * wmux, following the agent-context block's absolute-path check, concluded
+ * wmux was absent. Node inside WSL reports `linux`; a native Windows process
+ * reports `win32` whatever its environment says, and never needs a relay to
+ * reach a named pipe on its own machine.
+ */
+function isWslHost(env, platform = process.platform) {
+    return platform !== 'win32' && Boolean(env.WSL_DISTRO_NAME || env.WSLENV);
+}
+/**
  * Whether the local hop goes through npiperelay.exe over WSL interop.
  *
  * A Windows pipe path (`\\.\pipe\wmux`, not something rooted at `/`) reached
@@ -51,7 +67,7 @@ exports.SLOW_TRANSPORT_FLOOR_MS = 30000;
  * especially where AV scans the binary on each exec.
  */
 function usesNpiperelay(t) {
-    return !t.remote && !t.pipePath.startsWith('/') && Boolean(t.env.WSL_DISTRO_NAME || t.env.WSLENV);
+    return !t.remote && !t.pipePath.startsWith('/') && isWslHost(t.env, t.platform);
 }
 /** Whether this transport needs the floor at all. */
 function isSlowTransport(t) {

@@ -14,6 +14,7 @@ import {
 } from './wsl-network';
 import {
   DEFAULT_V2_TIMEOUT_MS,
+  isWslHost,
   transportDeadline,
   usesNpiperelay as usesNpiperelayFor,
   type Transport,
@@ -117,13 +118,14 @@ function parseRemoteTarget(spec: string): { host: string; port: number } {
 //     0. remoteTarget set (--remote / WMUX_REMOTE) → TCP (the devcontainer path,
 //        served by a `wmux bridge` reachable at host.docker.internal:9787)
 //     1. WMUX_PIPE starts with '/' → use as a Unix socket path
-//     2. WSL_DISTRO_NAME / WSLENV set → spawn npiperelay.exe automatically
+//     2. inside WSL (not win32, and WSL_DISTRO_NAME / WSLENV set — #288)
+//        → spawn npiperelay.exe automatically
 //     3. native Windows → connect directly to the named pipe
 // ─────────────────────────────────────────────────────────────────────────────
 function connectTransport(onConnect: () => void): net.Socket | Duplex {
   if (remoteTarget) return net.connect({ host: remoteTarget.host, port: remoteTarget.port }, onConnect);
   if (PIPE_PATH.startsWith('/')) return net.connect({ path: PIPE_PATH }, onConnect);
-  if (process.env.WSL_DISTRO_NAME || process.env.WSLENV) return connectViaNpiperelay(PIPE_PATH, onConnect);
+  if (isWslHost(process.env)) return connectViaNpiperelay(PIPE_PATH, onConnect);
   return net.connect({ path: PIPE_PATH }, onConnect);
 }
 

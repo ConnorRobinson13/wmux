@@ -46,6 +46,24 @@ export interface Transport {
   pipePath: string;
   /** Where WSL_DISTRO_NAME / WSLENV / WMUX_RPC_TIMEOUT_MS are read from. */
   env: NodeJS.ProcessEnv;
+  /** `process.platform` unless a test says otherwise. */
+  platform?: NodeJS.Platform;
+}
+
+/**
+ * Is this process running INSIDE a WSL distro (#288)?
+ *
+ * The env vars alone cannot say: Windows Terminal exports
+ * `WSLENV=WT_SESSION:WT_PROFILE_ID:` to EVERY process it starts, WSL or not, so
+ * a native Windows `wmux ping` from a Windows Terminal tab took the npiperelay
+ * branch and failed with "npiperelay.exe not found" — and an agent outside
+ * wmux, following the agent-context block's absolute-path check, concluded
+ * wmux was absent. Node inside WSL reports `linux`; a native Windows process
+ * reports `win32` whatever its environment says, and never needs a relay to
+ * reach a named pipe on its own machine.
+ */
+export function isWslHost(env: NodeJS.ProcessEnv, platform: NodeJS.Platform = process.platform): boolean {
+  return platform !== 'win32' && Boolean(env.WSL_DISTRO_NAME || env.WSLENV);
 }
 
 /**
@@ -57,7 +75,7 @@ export interface Transport {
  * especially where AV scans the binary on each exec.
  */
 export function usesNpiperelay(t: Transport): boolean {
-  return !t.remote && !t.pipePath.startsWith('/') && Boolean(t.env.WSL_DISTRO_NAME || t.env.WSLENV);
+  return !t.remote && !t.pipePath.startsWith('/') && isWslHost(t.env, t.platform);
 }
 
 /** Whether this transport needs the floor at all. */

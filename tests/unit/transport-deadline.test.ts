@@ -7,6 +7,7 @@ import {
   isSlowTransport,
   transportDeadline,
   usesNpiperelay,
+  isWslHost,
   type Transport,
 } from '../../src/cli/transport-deadline';
 
@@ -28,6 +29,8 @@ const t = (over: Partial<Transport> = {}): Transport => ({
   remote: false,
   pipePath: WIN_PIPE,
   env: {},
+  // Inside WSL Node reports linux — the shape every WSL case below describes.
+  platform: 'linux',
   ...over,
 });
 
@@ -44,6 +47,26 @@ describe('usesNpiperelay', () => {
   it('is false when a remote target has taken over the transport', () => {
     // TCP to a bridge replaces the local hop; there is no pipe left to relay.
     expect(usesNpiperelay(t({ remote: true, env: { WSL_DISTRO_NAME: 'Ubuntu' } }))).toBe(false);
+  });
+});
+
+describe('isWslHost (#288)', () => {
+  it('ignores WSLENV on native Windows — Windows Terminal sets it for every process', () => {
+    expect(isWslHost({ WSLENV: 'WT_SESSION:WT_PROFILE_ID:' }, 'win32')).toBe(false);
+    expect(isWslHost({ WSL_DISTRO_NAME: 'Ubuntu', WSLENV: 'x' }, 'win32')).toBe(false);
+    expect(usesNpiperelay(t({ platform: 'win32', env: { WSLENV: 'WT_SESSION:WT_PROFILE_ID:' } }))).toBe(false);
+  });
+
+  it('still detects WSL from inside a distro', () => {
+    expect(isWslHost({ WSL_DISTRO_NAME: 'Ubuntu' }, 'linux')).toBe(true);
+    expect(isWslHost({ WSLENV: 'WMUX/u' }, 'linux')).toBe(true);
+    expect(isWslHost({}, 'linux')).toBe(false);
+  });
+
+  it('the CLI dials through the shared check, not its own env test', () => {
+    const src = fs.readFileSync(path.join(__dirname, '../../src/cli/wmux.ts'), 'utf8');
+    expect(src).toMatch(/if \(isWslHost\(process\.env\)\) return connectViaNpiperelay/);
+    expect(src).not.toMatch(/process\.env\.WSL_DISTRO_NAME \|\| process\.env\.WSLENV/);
   });
 });
 

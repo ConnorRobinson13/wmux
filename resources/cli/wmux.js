@@ -124,7 +124,8 @@ function parseRemoteTarget(spec) {
 //     0. remoteTarget set (--remote / WMUX_REMOTE) → TCP (the devcontainer path,
 //        served by a `wmux bridge` reachable at host.docker.internal:9787)
 //     1. WMUX_PIPE starts with '/' → use as a Unix socket path
-//     2. WSL_DISTRO_NAME / WSLENV set → spawn npiperelay.exe automatically
+//     2. inside WSL (not win32, and WSL_DISTRO_NAME / WSLENV set — #288)
+//        → spawn npiperelay.exe automatically
 //     3. native Windows → connect directly to the named pipe
 // ─────────────────────────────────────────────────────────────────────────────
 function connectTransport(onConnect) {
@@ -132,7 +133,7 @@ function connectTransport(onConnect) {
         return net_1.default.connect({ host: remoteTarget.host, port: remoteTarget.port }, onConnect);
     if (PIPE_PATH.startsWith('/'))
         return net_1.default.connect({ path: PIPE_PATH }, onConnect);
-    if (process.env.WSL_DISTRO_NAME || process.env.WSLENV)
+    if ((0, transport_deadline_1.isWslHost)(process.env))
         return connectViaNpiperelay(PIPE_PATH, onConnect);
     return net_1.default.connect({ path: PIPE_PATH }, onConnect);
 }
