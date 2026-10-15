@@ -3,7 +3,8 @@ import { registerIpcHandlers, agentManager, ptyManager, setupAgentPtyForwarding,
 import { sequenceFrom, splitSequencedReport } from './ssh-detect';
 import { handleDetectionV2 } from './detection-rpc';
 import { isPtyCrashGuardInstalled } from './pty-manager';
-import { logDiagnostic } from './crash-diagnostics';
+import { logDiagnostic, getDiagnosticsPath } from './crash-diagnostics';
+import { armExitWatchdog } from './exit-watchdog';
 import { planQuit } from './quit-sequence';
 import { handleBrowserV2 } from './v2-browser';
 import { pickBrowserSurface } from './browser-engine-surface';
@@ -51,6 +52,7 @@ import {
   writeSessionSnapshot,
 } from './session-persistence';
 import { SessionFlushWaiters } from './session-flush';
+import { hardenWebviewPreferences } from './webview-prefs';
 import { stampAgentSessionIds } from './agent-session-persistence';
 import { noteIconRevision } from './icon-cache';
 import { installGpuWatchdog } from './gpu-watchdog';
@@ -1043,14 +1045,12 @@ function hardenWebContents(): void {
   app.on('web-contents-created', (_event, contents) => {
     const type = contents.getType();
 
-    if (type === 'webview') {
-      // Enforce safe webview preferences regardless of attributes set in the DOM.
+    // Enforce safe webview preferences regardless of attributes set in the DOM,
+    // plus Chrome's autoplay rule (#287). The event fires on the HOST — the
+    // wmux window — so it must be registered there; see webview-prefs.ts.
+    if (type === 'window' || type === 'webview') {
       contents.on('will-attach-webview', (_e, webPreferences, params) => {
-        delete (webPreferences as any).preload;
-        delete (webPreferences as any).preloadURL;
-        webPreferences.nodeIntegration = false;
-        webPreferences.contextIsolation = true;
-        (params as any).nodeintegration = 'false';
+        hardenWebviewPreferences(webPreferences as Record<string, unknown>, params as Record<string, unknown>);
       });
     }
 
@@ -2264,7 +2264,8 @@ app.on('before-quit', (event) => {
   quitFlushDone = true;
   if (wins.length === 0) return;
   event.preventDefault();
-  void Promise.all(wins.map(flushSessionFrom)).then(() => app.quit());
+  const quitAgain = () => app.quit();
+  Promise.all(wins.map(flushSessionFrom)).then(quitAgain, quitAgain);
 });
 
 // Windows is ending the session — logoff, shutdown, or a Windows Update
@@ -2352,6 +2353,17 @@ let quitDeferred = false;
 app.on('will-quit', (event) => {
   const ptysAtQuit = ptyManager.count();
   logDiagnostic('will-quit', { ptys: ptysAtQuit, guard: isPtyCrashGuardInstalled() });
+  // A quit that wedges in native teardown never runs JS again (#289: alive 16 h
+  // after `exit via=app.exit`). Another process is the only thing that can end
+  // it, so arm one now — it leaves on its own as soon as this process is gone.
+  // The deadline is past the longest legitimate quit (teardown budget + the
+  // force-quit margin + the PTY drain) by a wide berth.
+  armExitWatchdog({
+    pid: process.pid,
+    execPath: process.execPath,
+    deadlineMs: QUIT_TEARDOWN_BUDGET_MS + 15_000,
+    logPath: getDiagnosticsPath(),
+  });
   // Remote Console (#254): synchronous teardown — this handler cannot wait on
   // anything. Before the PTY drain, so no phone is still being fed (and no tap
   // still bound) while node-pty's exit callbacks land. Never allowed to throw

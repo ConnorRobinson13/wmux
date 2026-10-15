@@ -5,6 +5,8 @@ import path from 'path';
 import type { WindowId } from '../shared/types';
 import { loadSettings } from './settings-store';
 import { closeDialogCopy, decideClose } from './close-guard';
+import { rendererRecoveryCopy, isRecoverableGone, type RendererTrouble } from './renderer-recovery';
+import { logDiagnostic } from './crash-diagnostics';
 
 /** The window backdrop when transparency is off — matches --ui-bg-1. */
 const OPAQUE_BG = '#1a1a1a';
@@ -310,6 +312,7 @@ export class WindowManager {
     // renderer's closeWindow shortcut (`window.close()`), the frameless
     // caption's closeSelf — so this is the one place the guard can sit.
     win.on('close', (event) => this.guardClose(entry, event));
+    this.watchRendererHealth(entry);
 
     this.windows.set(id, entry);
     return id;
@@ -358,6 +361,70 @@ export class WindowManager {
       entry.window.close();
     }, () => {
       entry.closePending = false;
+    });
+  }
+
+  /**
+   * Offer a reload when this window's renderer hangs or dies (#289) — the PTYs
+   * live in main, so a reload reconnects every pane. See renderer-recovery.ts.
+   */
+  private watchRendererHealth(entry: WindowEntry): void {
+    const win = entry.window;
+    let prompt: AbortController | null = null;
+    // Set while WE end the renderer for a reload: that kill fires
+    // render-process-gone too, and must not ask the question a second time.
+    let reloading = false;
+    const offer = (kind: RendererTrouble) => {
+      if (prompt || win.isDestroyed()) return;
+      const controller = new AbortController();
+      prompt = controller;
+      const copy = rendererRecoveryCopy(kind);
+      dialog.showMessageBox(win, {
+        type: 'warning',
+        title: 'wmux',
+        message: copy.message,
+        detail: copy.detail,
+        buttons: copy.buttons,
+        defaultId: 1,
+        cancelId: 1,
+        noLink: true,
+        signal: controller.signal,
+      }).then(({ response }) => {
+        if (prompt === controller) prompt = null;
+        if (win.isDestroyed()) return;
+        if (response === 0) {
+          logDiagnostic('renderer-reload', { kind });
+          // A hung renderer may never run the navigation it is asked for, so
+          // it is ended first; a gone one has nothing left to end.
+          reloading = true;
+          if (kind === 'unresponsive') win.webContents.forcefullyCrashRenderer();
+          win.webContents.reload();
+        } else if (kind === 'gone') {
+          win.close();
+        }
+      }, () => {
+        if (prompt === controller) prompt = null;
+      });
+    };
+    win.on('unresponsive', () => {
+      logDiagnostic('renderer-unresponsive');
+      offer('unresponsive');
+    });
+    win.on('responsive', () => {
+      if (!prompt) return;
+      logDiagnostic('renderer-responsive');
+      const pending = prompt;
+      prompt = null;
+      pending.abort();
+    });
+    win.webContents.on('did-finish-load', () => { reloading = false; });
+    win.webContents.on('render-process-gone', (_event, details) => {
+      if (reloading || !isRecoverableGone(details.reason)) return;
+      logDiagnostic('renderer-gone', { reason: details.reason, code: details.exitCode });
+      // A dialog still asking about the hang is answered by the death.
+      prompt?.abort();
+      prompt = null;
+      offer('gone');
     });
   }
 
