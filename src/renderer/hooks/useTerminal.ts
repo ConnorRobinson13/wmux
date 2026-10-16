@@ -25,6 +25,8 @@ import {
 } from '../utils/mouse-modes';
 import { attachVisibleRenderer, RendererHandle } from '../utils/terminal-renderer';
 import { resetTerminalModes } from '../utils/terminal-reset';
+import { forgetSurfaceShellState, treeSurfaceIds, workspaceShellState } from '../utils/surface-shell-state';
+import { forgetProgressTurn, noteSurfaceProgress } from '../utils/progress-turn';
 import { windowsPtyCompat } from '../utils/windows-pty';
 import { ReplayHold } from '../utils/replay-hold';
 import { anchorViewportLikeConpty, captureCursorLine, captureViewportTop, restoreCursorLine } from '../utils/conpty-anchor';
@@ -104,18 +106,19 @@ function findSurfaceLocation(node: SplitNode, surfaceId: string): { paneId: stri
   return findSurfaceLocation(node.children[0], surfaceId) || findSurfaceLocation(node.children[1], surfaceId);
 }
 
-// Auto-heal a stuck "Running" badge. shellState is a single last-writer-wins
-// workspace field, written only by the in-pane shell integration
-// (report_shell_state). A shell that emits "running" but is killed before
-// returning to its prompt (e.g. an orchestration agent TUI reaped at teardown)
-// never emits the matching "idle", stranding the sidebar on "Running". A PTY
-// that has exited cannot be the running command, so clear it here.
+// Auto-heal a stuck "Running" badge. A shell that emits "running" but is killed
+// before returning to its prompt (e.g. an orchestration agent TUI reaped at
+// teardown) never emits the matching "idle", stranding the sidebar on
+// "Running". A PTY that has exited cannot be the running command, so THIS
+// surface stops counting — and only this one: clearing the whole workspace here
+// read "Idle" beside another pane's agent that was still at work (#294).
 function clearStuckRunningState(surfaceId: string): void {
   try {
+    forgetSurfaceShellState(surfaceId);
     const store = useStore.getState();
     const ws = store.workspaces.find((w) => treeHasSurface(w.splitTree, surfaceId));
     if (ws && ws.shellState === 'running') {
-      store.updateWorkspaceMetadata(ws.id, { shellState: 'idle' });
+      store.updateWorkspaceMetadata(ws.id, { shellState: workspaceShellState(treeSurfaceIds(ws.splitTree), 'idle') });
     }
   } catch { /* best-effort: badge reset is non-critical */ }
 }
@@ -967,6 +970,7 @@ export function useTerminal({ surfaceId, shell, cwd, visible = true, focused = t
     terminal.loadAddon(progressAddon);
     progressAddon.onChange(({ state, value }) => {
       if (disposed || !surfaceId) return;
+      noteSurfaceProgress(surfaceId, state);
       const setSurfaceProgress = useStore.getState().setSurfaceProgress;
       if (state === 0) setSurfaceProgress(surfaceId, null);
       else setSurfaceProgress(surfaceId, { state: state as 1 | 2 | 3 | 4, value });
@@ -1531,6 +1535,7 @@ export function useTerminal({ surfaceId, shell, cwd, visible = true, focused = t
         resetTerminalModes(terminal);
         terminal.writeln('\r\n\x1b[2m[process exited]\x1b[0m');
         clearStuckRunningState(id);
+        forgetProgressTurn(id);
         // An exited process can't be making progress — drop any leftover
         // OSC 9;4 indicator (same stuck-badge reasoning as above).
         useStore.getState().setSurfaceProgress(id, null);

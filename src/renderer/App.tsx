@@ -7,6 +7,8 @@ import { cwdReportPatch } from '../shared/paths';
 import { classifyClaudeNotification } from '../shared/claude-notification';
 import SplitContainer from './components/SplitPane/SplitContainer';
 import { updateRatio, getAllPaneIds, findLeaf, replaceSoleTerminalSurface, freezeSurfaceCwds, dropEphemeralSurfaces, dropCodeContent } from './store/split-utils';
+import { forgetProgressTurn } from './utils/progress-turn';
+import { type ShellState, previousSurfaceShellState, recordSurfaceShellState, treeSurfaceIds, workspaceShellState } from './utils/surface-shell-state';
 import { DEFAULT_DEV_PORTS, mergeDevPorts, matchDevPorts, firstNewDevPort } from './dev-ports';
 import { aggregateProgress } from './store/progress-slice';
 import { isDiffTabDismissed } from './store/surface-slice';
@@ -313,21 +315,29 @@ function handleRemoteNotice(cmd: any, addNotification: StoreAction, t: T): void 
   fireNotification('', useStore.getState().activeWorkspaceId, text, addNotification);
 }
 
-/** report_shell_state: notify when a foreground command ran ≥ 5s. */
+/**
+ * report_shell_state: record it for THIS surface, derive the workspace's state
+ * from all of them (#294), and notify when a foreground command ran ≥ 5s.
+ */
 function applyShellState(cmd: any, ws: WorkspaceInfo, deps: MetaDeps): void {
-  const newState = cmd.args?.[0] as 'idle' | 'running' | 'interrupted';
-  const prevState = ws.shellState;
-  deps.updateWorkspaceMetadata(ws.id, { shellState: newState });
+  const newState = cmd.args?.[0] as ShellState;
+  const surfaceId: string = cmd.surfaceId;
+  // The surface's OWN previous state: the workspace's could be another pane's.
+  const prevState = previousSurfaceShellState(surfaceId);
+  recordSurfaceShellState(surfaceId, newState);
+  deps.updateWorkspaceMetadata(ws.id, { shellState: workspaceShellState(treeSurfaceIds(ws.splitTree), newState) });
 
   if (newState === 'running') {
-    deps.runningStartTimes.current[ws.id] = Date.now();
+    deps.runningStartTimes.current[surfaceId] = Date.now();
     return;
   }
+  // Back at a prompt: the program that announced turns over OSC 9;4 is gone.
+  forgetProgressTurn(surfaceId);
   if (prevState !== 'running' || (newState !== 'idle' && newState !== 'interrupted')) return;
 
-  const startTime = deps.runningStartTimes.current[ws.id];
+  const startTime = deps.runningStartTimes.current[surfaceId];
   const elapsed = startTime ? (Date.now() - startTime) / 1000 : 0;
-  delete deps.runningStartTimes.current[ws.id];
+  delete deps.runningStartTimes.current[surfaceId];
   if (elapsed < 5) return;
 
   // Round to whole seconds BEFORE splitting into minutes — rounding the

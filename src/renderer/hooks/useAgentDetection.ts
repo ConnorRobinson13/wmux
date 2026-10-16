@@ -25,6 +25,7 @@ import { useEffect, useRef } from 'react';
 import { useStore } from '../store';
 import { surfaceTerminalRegistry, surfaceOutputSeq, surfaceTitle } from './useTerminal';
 import { detectScreen } from '../../shared/detection/engine';
+import { progressTurnState, withProgressTurn } from '../utils/progress-turn';
 import { BUNDLED_MANIFESTS } from '../../shared/detection/manifests';
 import type { DetectionResult, Manifest } from '../../shared/detection/types';
 
@@ -117,10 +118,16 @@ function scanSurface(
   if (!lines) return;
 
   scan.lastScannedSeq = surfaceOutputSeq.get(surfaceId) ?? 0;
-  const result = detectScreen(
-    { lines, title: surfaceTitle.get(surfaceId) ?? null },
-    manifests,
+  // An identified agent with no manifest (omp) still announces its turns over
+  // OSC 9;4; that fills an `unknown` screen verdict and nothing else (#294).
+  const result = withProgressTurn(
+    detectScreen(
+      { lines, title: surfaceTitle.get(surfaceId) ?? null },
+      manifests,
+      identity?.kind ?? null,
+    ),
     identity?.kind ?? null,
+    progressTurnState(surfaceId),
   );
 
   const previous = scan.lastResult;
