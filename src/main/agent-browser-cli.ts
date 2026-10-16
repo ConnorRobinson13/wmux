@@ -79,23 +79,87 @@ export function platformBinaryName(platform: string, arch: string): string {
  *
  * Intentionally separate from `searchDirs`: that list hunts a bare shim/binary
  * on PATH, this one hunts the package's own native binary.
+ *
+ * Any of those is still a GUESS at where npm puts global packages, and a
+ * custom prefix (`npm config set prefix D:\npm-global`) matched none of them
+ * (#293). So npm's own answer comes first, read the way npm reads it, without
+ * running npm (a `.cmd`, see `AGENT_BROWSER_NAMES`): `npm_config_prefix` in
+ * the environment, then `prefix=` in the user `.npmrc`. And since a global
+ * install is only usable once its prefix's bin dir is on PATH, every PATH
+ * entry is a candidate prefix too — the shim dir IS the prefix on Windows,
+ * and `{prefix}/bin` on posix — which also covers a prefix set only in a
+ * global or project npmrc this does not read.
  */
-function npmGlobalPrefixes(env: NodeJS.ProcessEnv, platform: string): string[] {
+function npmGlobalPrefixes(env: NodeJS.ProcessEnv, platform: string, readFile?: (p: string) => string | null): string[] {
+  const configured = [envValue(env, 'npm_config_prefix'), npmrcPrefix(env, platform, readFile)];
+  const fromPath = pathDirs(env, platform).map((dir) => prefixOfBinDir(dir, platform));
   const dirs: (string | undefined)[] = platform === 'win32'
     ? [
+        ...configured,
         env.APPDATA && path.join(env.APPDATA, 'npm'),
         env.NVM_SYMLINK,
         env.ProgramFiles && path.join(env.ProgramFiles, 'nodejs'),
         env.LOCALAPPDATA && path.join(env.LOCALAPPDATA, 'Programs', 'nodejs'),
       ]
     : [
+        ...configured,
         '/usr/local',
         '/usr',
         '/opt/homebrew',
         env.HOME && path.join(env.HOME, '.npm-global'),
       ];
-  // NVM_SYMLINK often IS `%ProgramFiles%\nodejs`; probe each prefix once.
-  return [...new Set(dirs.filter((d): d is string => typeof d === 'string' && d.length > 0))];
+  // NVM_SYMLINK often IS `%ProgramFiles%\nodejs`, and a PATH entry often
+  // repeats a prefix above; probe each prefix once.
+  return [...new Set([...dirs, ...fromPath].filter((d): d is string => typeof d === 'string' && d.length > 0))];
+}
+
+/** The npm prefix a PATH entry would be the global bin dir of, if any. */
+function prefixOfBinDir(dir: string, platform: string): string | undefined {
+  if (platform === 'win32') return dir;
+  return path.basename(dir) === 'bin' ? path.dirname(dir) : undefined;
+}
+
+/** An env var by name, ignoring case — npm itself reads `npm_config_*` case-insensitively. */
+function envValue(env: NodeJS.ProcessEnv, name: string): string | undefined {
+  const key = Object.keys(env).find((k) => k.toLowerCase() === name.toLowerCase());
+  const value = key ? env[key]?.trim() : undefined;
+  return value || undefined;
+}
+
+/**
+ * The `prefix` the user's `.npmrc` sets, or undefined. Where `npm config set
+ * prefix` writes it: `npm_config_userconfig` when set, else `~/.npmrc`.
+ *
+ * npm's ini dialect, the parts a prefix line can use: optional quotes,
+ * `${VAR}` expanded from the environment, and a leading `~` for the home dir
+ * (npm's path-type config does that). A commented-out line (`;prefix=…`) has
+ * a different key and is skipped. A value that still holds an unexpanded
+ * `${…}` is dropped rather than probed as a literal path.
+ */
+function npmrcPrefix(env: NodeJS.ProcessEnv, platform: string, readFile?: (p: string) => string | null): string | undefined {
+  if (!readFile) return undefined;
+  const home = platform === 'win32' ? envValue(env, 'USERPROFILE') : envValue(env, 'HOME');
+  const rcPath = envValue(env, 'npm_config_userconfig') ?? (home && path.join(home, '.npmrc'));
+  const text = rcPath ? readFile(rcPath) : null;
+  if (!text) return undefined;
+  const raw = text.split('\n').map(prefixLineValue).find((v) => v !== undefined);
+  return raw === undefined ? undefined : expandNpmrcPath(raw, env, home);
+}
+
+/** The value of a `prefix = …` ini line, unquoted; undefined for any other line. */
+function prefixLineValue(line: string): string | undefined {
+  const eq = line.indexOf('=');
+  if (eq < 0 || line.slice(0, eq).trim().toLowerCase() !== 'prefix') return undefined;
+  const value = line.slice(eq + 1).trim();
+  const quoted = value.length >= 2 && (value[0] === '"' || value[0] === "'") && value.endsWith(value[0]);
+  return quoted ? value.slice(1, -1) : value;
+}
+
+/** `${VAR}` and a leading `~` expanded as npm does; undefined when unusable. */
+function expandNpmrcPath(raw: string, env: NodeJS.ProcessEnv, home: string | undefined): string | undefined {
+  let value = raw.replace(/\$\{([^{}]*)\}/g, (whole, name: string) => envValue(env, name) ?? whole);
+  if (home && (value === '~' || value.startsWith('~/') || value.startsWith('~\\'))) value = home + value.slice(1);
+  return value && !value.includes('${') ? value : undefined;
 }
 
 /** The npm package's native binary under one prefix — per-platform layout. */
@@ -148,6 +212,8 @@ export interface ResolveOptions {
   /** Needed to name the npm package's internal native binary (see `platformBinaryName`). */
   arch: string;
   exists: (p: string) => boolean;
+  /** Reads the user `.npmrc` for a custom global prefix (#293). Omitted: the npmrc is not consulted. */
+  readFile?: (p: string) => string | null;
 }
 
 /**
@@ -165,11 +231,11 @@ export interface ResolveOptions {
  * throws EINVAL when actually spawned.
  */
 export function resolveAgentBrowserBinary(opts: ResolveOptions): string | null {
-  const { configured, env, platform, arch, exists } = opts;
+  const { configured, env, platform, arch, exists, readFile } = opts;
   if (configured) return exists(configured) ? configured : null;
 
   const nativeName = platformBinaryName(platform, arch);
-  for (const prefix of npmGlobalPrefixes(env, platform)) {
+  for (const prefix of npmGlobalPrefixes(env, platform, readFile)) {
     const candidate = npmPackageBinary(prefix, nativeName, platform);
     if (exists(candidate)) return candidate;
   }
@@ -181,6 +247,15 @@ export function resolveAgentBrowserBinary(opts: ResolveOptions): string | null {
     }
   }
   return null;
+}
+
+/** Real-filesystem read for the npmrc; a missing or unreadable file is no prefix. */
+function readTextFile(p: string): string | null {
+  try {
+    return fs.readFileSync(p, 'utf8');
+  } catch {
+    return null;
+  }
 }
 
 /** Real-filesystem probe used by every caller except tests. */
@@ -227,6 +302,8 @@ export interface AgentBrowserPathDeps {
   platform?: string;
   arch?: string;
   exists?: (p: string) => boolean;
+  /** Defaults to a real read only when `exists` is real too, so a faked filesystem never reads the real `~/.npmrc`. */
+  readFile?: (p: string) => string | null;
   /** Test seam: the clock the negative TTL is measured against. Defaults to `Date.now()`. */
   now?: number;
 }
@@ -268,6 +345,7 @@ export function agentBrowserPath(configured?: string, force = false, deps: Agent
     platform: deps.platform ?? process.platform,
     arch: deps.arch ?? process.arch,
     exists: deps.exists ?? statExists,
+    readFile: deps.readFile ?? (deps.exists ? undefined : readTextFile),
   });
   cachedAt = now;
   return cachedPath;

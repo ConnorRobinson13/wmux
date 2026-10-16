@@ -814,6 +814,11 @@ export function registerIpcHandlers(windowManager: WindowManager, cdpProxyInstan
       const destination = customNotificationSoundPath(extension);
       await fsp.mkdir(path.dirname(destination), { recursive: true });
       await fsp.copyFile(source, destination);
+      // Only one custom sound is ever in use: drop a previous pick saved under
+      // another extension rather than leave it in %APPDATA% for good.
+      await Promise.all(CUSTOM_NOTIFICATION_SOUND_EXTENSIONS
+        .filter((other) => other !== extension)
+        .map((other) => fsp.rm(customNotificationSoundPath(other), { force: true }).catch(() => undefined)));
       const dataUrl = await customNotificationSoundDataUrl(destination, extension);
       if (!dataUrl) return { error: 'too_large' };
       return { dataUrl, extension, name: path.basename(source) };

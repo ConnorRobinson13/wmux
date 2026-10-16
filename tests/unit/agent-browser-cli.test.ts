@@ -108,6 +108,63 @@ describe('resolveAgentBrowserBinary', () => {
     expect(norm(found)).toBe(bin);
   });
 
+  describe('a custom npm global prefix (#293)', () => {
+    const bin = 'D:/npm-global/node_modules/agent-browser/bin/agent-browser-win32-x64.exe';
+    const base = { platform: 'win32', arch: 'x64', exists: existsIn([bin]) } as const;
+
+    it('reads `prefix=` from the user .npmrc, as `npm config set prefix` writes it', () => {
+      const reads: string[] = [];
+      const found = resolveAgentBrowserBinary({
+        ...base,
+        env: { APPDATA: 'C:/Users/x/AppData/Roaming', USERPROFILE: 'C:/Users/x' },
+        readFile: (p) => {
+          reads.push(p.replace(/\\/g, '/'));
+          return p.replace(/\\/g, '/') === 'C:/Users/x/.npmrc'
+            ? '; a comment\r\nregistry=https://registry.npmjs.org/\r\nprefix=D:\\npm-global\r\n'
+            : null;
+        },
+      });
+      expect(norm(found)).toBe(bin);
+      expect(reads).toEqual(['C:/Users/x/.npmrc']);
+    });
+
+    it('honours npm_config_userconfig, quotes, ${VAR} and a leading ~', () => {
+      const home = 'C:/Users/x';
+      const homeBin = 'C:/Users/x/npm-global/node_modules/agent-browser/bin/agent-browser-win32-x64.exe';
+      const rc = (body: string) => (p: string) => (p.replace(/\\/g, '/') === 'E:/cfg/npmrc' ? body : null);
+      const env = { USERPROFILE: home, NPM_CONFIG_USERCONFIG: 'E:/cfg/npmrc', NPMDIR: 'D:/npm-global' };
+      expect(norm(resolveAgentBrowserBinary({ ...base, env, readFile: rc('prefix = "${NPMDIR}"') }))).toBe(bin);
+      expect(norm(resolveAgentBrowserBinary({
+        ...base, env, exists: existsIn([homeBin]), readFile: rc('prefix=~/npm-global'),
+      }))).toBe(homeBin);
+      // An unset variable is not probed as a literal `${…}` path.
+      expect(resolveAgentBrowserBinary({ ...base, env, readFile: rc('prefix=${NOPE}/x') })).toBeNull();
+      // A commented-out line is not a prefix.
+      expect(resolveAgentBrowserBinary({ ...base, env, readFile: rc(';prefix=D:/npm-global') })).toBeNull();
+    });
+
+    it('reads npm_config_prefix from the environment, in any case', () => {
+      const found = resolveAgentBrowserBinary({ ...base, env: { NPM_CONFIG_PREFIX: 'D:/npm-global' } });
+      expect(norm(found)).toBe(bin);
+    });
+
+    it('treats every PATH entry as a candidate prefix — the shim dir IS the prefix on Windows', () => {
+      const found = resolveAgentBrowserBinary({ ...base, env: { Path: 'C:/Windows;D:/npm-global' } });
+      expect(norm(found)).toBe(bin);
+    });
+
+    it('maps a posix PATH entry `{prefix}/bin` to `{prefix}/lib/node_modules`', () => {
+      const posixBin = '/home/x/.local/share/npm/lib/node_modules/agent-browser/bin/agent-browser-linux-x64';
+      const found = resolveAgentBrowserBinary({
+        env: { PATH: '/usr/bin:/home/x/.local/share/npm/bin' },
+        platform: 'linux',
+        arch: 'x64',
+        exists: existsIn([posixBin]),
+      });
+      expect(norm(found)).toBe(posixBin);
+    });
+  });
+
   it('prefers the npm package native binary over a bare shim/binary on PATH', () => {
     const npmPkgBinary = 'C:/Users/x/AppData/Roaming/npm/node_modules/agent-browser/bin/agent-browser-win32-x64.exe';
     const onPath = 'C:/somewhere/on/path/agent-browser.exe';
