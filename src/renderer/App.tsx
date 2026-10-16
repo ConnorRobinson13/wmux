@@ -569,6 +569,17 @@ export default function App() {
   const [agentNavigatorOpen, setAgentNavigatorOpen] = useState(false);
   const [hubOpen, setHubOpen] = useState(false);
   const hubEnabled = useStore((s) => s.appearancePrefs.hubEnabled);
+  // Focus mode: a class on <html> deepens the dim every unfocused pane already
+  // has (`.pane-wrapper__unfocused-overlay`). CSS-only on purpose — no pane
+  // re-renders when it flips. Remembered per window in localStorage, which can
+  // throw or come back empty, so it degrades to "off".
+  const [focusMode, setFocusMode] = useState(() => {
+    try { return localStorage.getItem('wmux-focus-mode') === '1'; } catch { return false; }
+  });
+  useEffect(() => {
+    document.documentElement.classList.toggle('wmux-focus-mode', focusMode);
+    try { localStorage.setItem('wmux-focus-mode', focusMode ? '1' : '0'); } catch { /* storage unavailable: keep the in-memory state */ }
+  }, [focusMode]);
   // Screen detection for agents that report no state of their own. One loop for
   // the whole window; it skips every surface whose agent IS reporting.
   useAgentDetection(useStore((s) => s.workspacePrefs.detectAgentScreens));
@@ -1575,6 +1586,8 @@ export default function App() {
         onToggleNotificationPanel={handleToggleNotifPanel}
         onNotificationJump={handleNotificationJump}
         onMarkAllNotificationsRead={() => markAllRead()}
+        focusMode={focusMode}
+        onToggleFocusMode={() => setFocusMode((on) => !on)}
       />
 
       <div style={{ flex: 1, display: 'flex', overflow: 'hidden' }}>

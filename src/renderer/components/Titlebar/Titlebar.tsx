@@ -9,7 +9,7 @@ import React from 'react';
 import logoSrc from '../../../../resources/icons/icon.svg';
 import NotificationBell from './NotificationBell';
 import UpdateBadge from './UpdateBadge';
-import { IconHelp, IconCode, IconSettings, IconPixelAgent } from './icons';
+import { IconHelp, IconCode, IconSettings, IconPixelAgent, IconFocus } from './icons';
 import WindowControls, { useIsFramelessWindow } from './WindowControls';
 import { NotificationInfo, WorkspaceId, PaneId, SurfaceId } from '../../../shared/types';
 import { useT } from '../../i18n';
@@ -29,6 +29,9 @@ interface TitlebarProps {
   onToggleNotificationPanel: () => void;
   onNotificationJump: (workspaceId: WorkspaceId, surfaceId: SurfaceId, paneId?: PaneId) => void;
   onMarkAllNotificationsRead: () => void;
+  /** Focus mode: every pane but the focused one is dimmed. */
+  focusMode?: boolean;
+  onToggleFocusMode?: () => void;
 }
 
 export default function Titlebar({
@@ -44,6 +47,8 @@ export default function Titlebar({
   onToggleNotificationPanel,
   onNotificationJump,
   onMarkAllNotificationsRead,
+  focusMode,
+  onToggleFocusMode,
 }: TitlebarProps) {
   const t = useT();
   // Clear-transparency windows are frameless and have no native caption
@@ -91,6 +96,14 @@ export default function Titlebar({
           title={t('titlebar.settings')}
         >
           <IconSettings />
+        </button>
+        <button
+          className={`titlebar__btn${focusMode ? ' titlebar__btn--active' : ''}`}
+          onClick={onToggleFocusMode}
+          title={t('titlebar.focusMode', 'Focus mode: dim every pane but the focused one')}
+          aria-pressed={!!focusMode}
+        >
+          <IconFocus />
         </button>
       </div>
       <span className="titlebar__title">{title ?? ''}</span>

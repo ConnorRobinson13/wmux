@@ -98,6 +98,7 @@ export const en = {
   'titlebar.help': 'Help / Tutorial',
   'titlebar.devtools': 'Toggle Developer Tools',
   'titlebar.settings': 'Settings (Ctrl+,)',
+  'titlebar.focusMode': 'Focus mode: dim every pane but the focused one',
   // Titlebar — update badge (issue #88; in-app install, issue #125)
   'titlebar.updateAvailable': 'Update available',
   'titlebar.updateDownload': 'Click to download from GitHub',

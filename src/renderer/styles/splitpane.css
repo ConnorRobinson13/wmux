@@ -106,7 +106,17 @@ html.wmux-transparent .split-divider--horizontal {
 }
 .pane-wrapper__unfocused-overlay {
   position: absolute; inset: 0; background: rgba(0, 0, 0, 0.2);
-  pointer-events: none; z-index: 5; transition: opacity 0.15s ease;
+  pointer-events: none; z-index: 5; transition: opacity 0.15s ease, background-color 0.2s ease;
+}
+/* Focus mode (titlebar button): the same overlay, much darker, and the
+   unfocused panes' tab bars fade with it. Still pointer-events: none, so a
+   click on a dimmed pane focuses it and the spotlight follows. */
+.wmux-focus-mode .pane-wrapper__unfocused-overlay {
+  background: rgba(0, 0, 0, 0.62);
+}
+.surface-tab-bar { transition: opacity 0.2s ease; }
+.wmux-focus-mode .pane-wrapper:not(.pane-wrapper--focused) .surface-tab-bar {
+  opacity: 0.4;
 }
 
 /* ─── Surface tab bar ──────────────────────────────────────────────────────── */

@@ -115,6 +115,14 @@
   border-color: rgba(var(--ui-overlay-rgb),0.15);
 }
 
+/* A toggle that is on (focus mode). */
+.titlebar__btn--active,
+.titlebar__btn--active:hover {
+  color: rgba(var(--ui-overlay-rgb),0.95);
+  background: rgba(var(--ui-overlay-rgb),0.12);
+  border-color: rgba(var(--ui-overlay-rgb),0.3);
+}
+
 .titlebar__update-badge {
   width: auto;
   padding: 0 8px;

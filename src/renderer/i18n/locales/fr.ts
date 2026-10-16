@@ -54,6 +54,7 @@ export const fr: Translation = {
   'titlebar.help': 'Aide / Tutoriel',
   'titlebar.devtools': 'Afficher/Masquer les outils de développement',
   'titlebar.settings': 'Paramètres (Ctrl+,)',
+  'titlebar.focusMode': 'Mode focus : assombrir tous les panes sauf celui qui a le focus',
   'titlebar.updateAvailable': 'Mise à jour disponible',
   'titlebar.updateDownload': 'Clic pour télécharger sur GitHub',
   'titlebar.updateInstall': 'Clic pour télécharger et installer',

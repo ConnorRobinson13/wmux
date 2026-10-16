@@ -73,6 +73,17 @@ export function IconPixelAgent({ className, size = 16 }: IconProps) {
 
 /** Settings — 6-lobe rounded cog. Fewer, fatter teeth than the old 12-tooth
  *  filled gear, which is what makes it survive a 16px raster. */
+/** Focus mode — a circle half in shadow: one side lit, the other dimmed,
+ *  which is what the mode does to the panes. */
+export function IconFocus({ className, size = 16 }: IconProps) {
+  return (
+    <svg className={className} width={size} height={size} viewBox="0 0 24 24" strokeWidth={2} {...base} aria-hidden="true">
+      <circle cx="12" cy="12" r="9.5" />
+      <path d="M12 2.5a9.5 9.5 0 0 1 0 19z" fill="currentColor" stroke="none" />
+    </svg>
+  );
+}
+
 export function IconSettings({ className, size = 16 }: IconProps) {
   return (
     <svg className={className} width={size} height={size} viewBox="0 0 24 24" strokeWidth={2} {...base} aria-hidden="true">
