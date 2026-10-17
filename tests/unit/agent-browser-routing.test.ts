@@ -650,6 +650,62 @@ describe('resolveBrowserTarget — which engine a command lands on', () => {
 
     expect(await resolveBrowserTarget(caller)).toEqual({ kind: 'web', wcId: 9 });
   });
+
+  /**
+   * `wmux browser <verb> --surface <browser-surface>` — the browser's own id as
+   * the caller. It used to be read as a new terminal: the workspace's browser
+   * was already bound to the agent's terminal, so a fresh pane was split for
+   * it, and targeting THAT pane split another, one per command.
+   */
+  it('drives a browser surface named as the caller instead of splitting a new pane', async () => {
+    const terminal = nextCaller();
+    const win = fakeWindow({
+      workspaceOf: { [terminal]: 'ws-1', 'surf-named': 'ws-1' },
+      browsersIn: { 'ws-1': ['surf-named'] },
+      created: 'surf-SPLIT',
+    });
+    env.windows = [win];
+    env.wcIdBySurface.set('surf-named', 21);
+
+    // The terminal binds the workspace's browser first, as an agent's plain
+    // `wmux browser open` does…
+    expect(await resolveBrowserTarget(terminal)).toEqual({ kind: 'web', wcId: 21 });
+    // …then the same browser is named explicitly, twice.
+    expect(await resolveBrowserTarget('surf-named')).toEqual({ kind: 'web', wcId: 21 });
+    expect(await resolveBrowserTarget('surf-named')).toEqual({ kind: 'web', wcId: 21 });
+
+    expect(win.calls.some((js) => js.includes('__wmux_splitPane'))).toBe(false);
+  });
+
+  it('routes a named agent-mode browser surface to the agent engine', async () => {
+    env.windows = [fakeWindow({
+      workspaceOf: { 'surf-named-agent': 'ws-1' },
+      browsersIn: { 'ws-1': ['surf-named-agent'] },
+      engines: { 'surf-named-agent': 'agent' },
+      created: 'surf-SPLIT',
+    })];
+
+    const target = await resolveBrowserTarget('surf-named-agent');
+    expect(target?.kind).toBe('agent');
+    expect((target as any).session.sessionName).toBe('wmux-surf-named-agent');
+  });
+
+  // Naming a pane is not owning it: a terminal agent arriving later must still
+  // be able to adopt it rather than split a pane of its own.
+  it('leaves a named browser surface adoptable by a terminal', async () => {
+    const terminal = nextCaller();
+    const win = fakeWindow({
+      workspaceOf: { [terminal]: 'ws-1', 'surf-shared': 'ws-1' },
+      browsersIn: { 'ws-1': ['surf-shared'] },
+      created: 'surf-SPLIT',
+    });
+    env.windows = [win];
+    env.wcIdBySurface.set('surf-shared', 31);
+
+    await resolveBrowserTarget('surf-shared');
+    expect(await resolveBrowserTarget(terminal)).toEqual({ kind: 'web', wcId: 31 });
+    expect(win.calls.some((js) => js.includes('__wmux_splitPane'))).toBe(false);
+  });
 });
 
 describe('the dashboard reference an agent command takes', () => {

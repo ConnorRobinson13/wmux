@@ -112,7 +112,9 @@ async function resolveBrowserWcId(caller?: string): Promise<number | null> {
     const wcId = cdpBridge.wcIdForSurface(bound);
     if (wcId !== null) return wcId;
     callerBrowserSurface.delete(caller);
-    boundBrowserSurfaces.delete(bound);
+    // A caller bound to ITSELF (see below) never claimed the surface, so it has
+    // no ownership to give back — the terminal that does own it keeps it.
+    if (bound !== caller) boundBrowserSurfaces.delete(bound);
   }
 
   const workspaceId: string | null = await win.webContents.executeJavaScript(
@@ -125,6 +127,23 @@ async function resolveBrowserWcId(caller?: string): Promise<number | null> {
   const existing: string[] = await win.webContents.executeJavaScript(
     `window.__wmux_listBrowserSurfaces?.(${JSON.stringify(workspaceId)}) ?? []`,
   );
+
+  // `--surface <id>` may name a BROWSER surface — the documented meaning of the
+  // flag is "whose browser to drive" — rather than a terminal that owns one.
+  // Without this, the browser's id was treated as a brand-new terminal caller:
+  // every browser in the workspace was already bound, so a fresh pane was split
+  // for it, and an agent that then targeted the pane it could see (the newest)
+  // split another on every command. Same precedence `pickBrowserSurface` gives
+  // `browser engine`, fixed there in 2.1.0 and never carried over to the verbs.
+  // Bound to itself so later commands take the fast path above, but NOT added
+  // to `boundBrowserSurfaces`: naming a pane is not owning it, and a terminal
+  // agent may still adopt it.
+  if (existing.includes(caller)) {
+    callerBrowserSurface.set(caller, caller);
+    if ((await engineForSurface(caller)) === 'agent') return null;
+    return pollSurfaceWcId(caller, 5000);
+  }
+
   let browserSurfaceId = existing.find((id) => !boundBrowserSurfaces.has(id)) ?? null;
   if (!browserSurfaceId) {
     const created = await win.webContents.executeJavaScript(
